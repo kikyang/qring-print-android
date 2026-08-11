@@ -257,73 +257,9 @@ object Design {
         setTextColor(ON_SURFACE)
     }
 
-    // ── Material Symbols 图标（官方矢量字体，assets/fonts/）──
-    // 图标 codepoint（与 Material Icons 同一套）：
-    // home E88A / print E8AD / image E3F4 / edit_note E757 / person E7FD / book E865
-    // calendar_month EBCC / checklist E6B2 / schedule E8B5 / menu_book EA18 / school E80C
-    // settings E8B8 / build E869 / check_circle E86C / list_alt E0EE
+    // ── AI 生成统一风格位图图标（assets/icons/，2026-08-11）──
+    // 原 Material Symbols 字体（19.4MB）已随图标换用而删除（无引用）
     object Icons {
-        const val HOME = ""
-        const val PRINT = ""
-        const val IMAGE = ""
-        const val EDIT_NOTE = ""
-        const val PERSON = ""
-        const val BOOK = ""
-        const val CALENDAR = ""
-        const val CHECKLIST = ""
-        const val SCHEDULE = ""
-        const val MENU_BOOK = ""
-        const val SCHOOL = ""
-        const val SETTINGS = ""
-        const val BUILD = ""
-        const val CHECK_CIRCLE = ""
-        const val LIST_ALT = ""
-        const val HISTORY = ""
-        const val CLEAR = ""
-        const val REFRESH = ""
-        const val PREVIEW = ""
-        const val BOLT = ""
-
-        @Volatile
-        private var iconTypeface: Typeface? = null
-
-        /** 图标字体（懒加载，复用单例） */
-        fun typeface(): Typeface = iconTypeface ?: runCatching {
-            Typeface.createFromAsset(Utils.appContext().assets, "fonts/MaterialSymbolsOutlined.ttf")
-        }.getOrNull()?.also { iconTypeface = it } ?: Typeface.DEFAULT
-
-        @Volatile
-        private var filledTypeface: Typeface? = null
-
-        /**
-         * Sharp 填充变体：Material Symbols Sharp 风格（直角利落）+ FILL=1 + wght 500，
-         * 比 Outlined 更精致醒目（2026-08-11 用户选定 sharp 风格）。
-         */
-        fun filledTypeface(): Typeface = filledTypeface ?: runCatching {
-            Typeface.Builder(Utils.appContext().assets, "fonts/MaterialSymbolsSharp.ttf")
-                .setFontVariationSettings("FILL 1,GRAD 0,opsz 48,wght 500")
-                .build()
-        }.getOrNull()?.also { filledTypeface = it } ?: typeface()
-
-        /** 填充图标 TextView（指定字符 + 尺寸 + 颜色） */
-        fun textViewFilled(code: String, size: Int, color: Int): TextView = TextView(Utils.appContext()).apply {
-            text = code
-            typeface = filledTypeface()
-            textSize = size.toFloat()
-            setTextColor(color)
-            gravity = Gravity.CENTER
-        }
-
-        /** 图标 TextView（outline 变体） */
-        fun textView(code: String, size: Int, color: Int): TextView = TextView(Utils.appContext()).apply {
-            text = code
-            typeface = typeface()
-            textSize = size.toFloat()
-            setTextColor(color)
-            gravity = Gravity.CENTER
-        }
-
-        // ── AI 生成统一风格位图图标（assets/icons/，2026-08-11）──
         private val bitmapCache = HashMap<String, android.graphics.Bitmap?>()
 
         /** 加载位图图标（assets/icons/<name>.png，缓存） */
