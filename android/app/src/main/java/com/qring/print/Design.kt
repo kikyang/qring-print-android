@@ -277,6 +277,7 @@ object Design {
         const val BUILD = ""
         const val CHECK_CIRCLE = ""
         const val LIST_ALT = ""
+        const val HISTORY = ""
         const val CLEAR = ""
         const val REFRESH = ""
         const val PREVIEW = ""

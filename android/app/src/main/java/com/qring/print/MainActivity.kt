@@ -380,9 +380,11 @@ class MainActivity : Activity() {
             GridEntry(Design.Icons.EDIT_NOTE, if (dark) 0xFFA5D6A7.toInt() else 0xFF1B5E20.toInt(), if (dark) 0xFF1D3A20.toInt() else 0xFFE8F5E9.toInt(), "文字打印", { switchPage(PAGE_PRINT); subTabText.isChecked = true; input.requestFocus() }),
             GridEntry(Design.Icons.IMAGE, if (dark) 0xFF90CAF9.toInt() else 0xFF0D47A1.toInt(), if (dark) 0xFF0D2B45.toInt() else 0xFFE3F2FD.toInt(), "图片打印", { switchPage(PAGE_PRINT); subTabImage.isChecked = true }),
             GridEntry(Design.Icons.MENU_BOOK, if (dark) 0xFFFFCC80.toInt() else 0xFFE65100.toInt(), if (dark) 0xFF3D2A10.toInt() else 0xFFFFF3E0.toInt(), "错题卡", { switchPage(PAGE_PRINT); subTabCard.isChecked = true }),
+            GridEntry(Design.Icons.LIST_ALT, if (dark) 0xFF90A4AE.toInt() else 0xFF37474F.toInt(), if (dark) 0xFF1E2A30.toInt() else 0xFFECEFF1.toInt(), "条码打印", { switchPage(PAGE_PRINT); subTabBarcode.isChecked = true }),
             GridEntry(Design.Icons.CALENDAR, if (dark) 0xFFCE93D8.toInt() else 0xFF6A1B9A.toInt(), if (dark) 0xFF2D1B3A.toInt() else 0xFFF3E5F5.toInt(), "课程表", { printTemplate { TemplateLibrary.courseTable() } }),
             GridEntry(Design.Icons.CHECKLIST, if (dark) 0xFF80CBC4.toInt() else 0xFF00695C.toInt(), if (dark) 0xFF0F2E2B.toInt() else 0xFFE0F7FA.toInt(), "单词表", { printTemplate { TemplateLibrary.wordList() } }),
             GridEntry(Design.Icons.SCHEDULE, if (dark) 0xFFF48FB1.toInt() else 0xFFAD1457.toInt(), if (dark) 0xFF3A1B2A.toInt() else 0xFFFCE4EC.toInt(), "每日计划", { printTemplate { TemplateLibrary.dailyPlan() } }),
+            GridEntry(Design.Icons.HISTORY, if (dark) 0xFFBCAAA4.toInt() else 0xFF4E342E.toInt(), if (dark) 0xFF2B1F1C.toInt() else 0xFFEFE9E7.toInt(), "打印历史", { startActivity(Intent(this@MainActivity, HistoryActivity::class.java)) }),
         )
         for (i in grid.indices step 2) {
             val g1 = grid[i]
@@ -760,26 +762,13 @@ class MainActivity : Activity() {
             addView(Design.sectionTitle("条码 / 二维码打印"))
             addView(Design.caption("二维码 / 条形码，打印后手机可扫"))
             addView(Design.label("条码类型"))
-            // 类型网格 2 列（自定义互斥高亮）
+            // 类型网格 2 列（自定义互斥高亮，选中=primary-container 持续高亮）
             BarcodeGenerator.TYPES.chunked(2).forEach { row ->
                 addView(Design.row {
                     row.forEach { type ->
                         val btn = Design.outlineButton(type.label)
                         barcodeTypeButtons[type] = btn
-                        btn.setOnClickListener {
-                            currentBarcodeType = type
-                            barcodeTypeButtons.forEach { (t, b) ->
-                                b.background = if (t == type) {
-                                    Design.rounded(Design.PRIMARY_CONTAINER, Design.RADIUS_SM)
-                                } else {
-                                    Design.pressable(
-                                        Design.rounded(Design.SURFACE, Design.RADIUS_SM, Design.OUTLINE, 1),
-                                        Design.rounded(Design.PRIMARY_CONTAINER, Design.RADIUS_SM),
-                                    )
-                                }
-                            }
-                            autoRefreshBarcodePreview()
-                        }
+                        btn.setOnClickListener { selectBarcodeType(type) }
                         addView(btn, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
                             if (row.indexOf(type) > 0) marginStart = Design.dp(6)
                         })
@@ -812,6 +801,9 @@ class MainActivity : Activity() {
                     autoRefreshBarcodePreview()
                 }
             })
+            // 默认选中第一个类型（QR）并高亮 —— 必须在 barcodeInput/barcodeHint 创建之后
+            // （2026-08-11 修：此前在创建前调用会触发 lateinit 未初始化崩溃）
+            selectBarcodeType(BarcodeGenerator.TYPES[0])
         })
 
         // 预览
@@ -838,10 +830,32 @@ class MainActivity : Activity() {
         return col
     }
 
-    /** 条码自动刷新预览：类型/内容变化时，有效则重渲 */
+    /** 选中条码类型：更新当前类型 + 按钮高亮（选中 primary-container 持续高亮） */
+    private fun selectBarcodeType(type: BarcodeGenerator.BarcodeType) {
+        currentBarcodeType = type
+        barcodeTypeButtons.forEach { (t, b) ->
+            b.background = if (t == type) {
+                Design.rounded(Design.PRIMARY_CONTAINER, Design.RADIUS_SM)
+            } else {
+                Design.pressable(
+                    Design.rounded(Design.SURFACE, Design.RADIUS_SM, Design.OUTLINE, 1),
+                    Design.rounded(Design.PRIMARY_CONTAINER, Design.RADIUS_SM),
+                )
+            }
+        }
+        // 构建期可能在其他字段就绪前调用，加 isInitialized 保护
+        if (::barcodeHint.isInitialized) {
+            barcodeHint.text = type.hint
+            barcodeHint.setTextColor(Design.TEXT_SUB)
+        }
+        autoRefreshBarcodePreview()
+    }
+
+    /** 条码自动刷新预览：内容有效且有输入就重渲（2026-08-11 修：原 drawable 守卫导致输入不渲染） */
     private fun autoRefreshBarcodePreview() {
-        if (barcodePreview.drawable == null) return
-        if (BarcodeGenerator.validate(currentBarcodeType, barcodeInput.text.toString()) == null) {
+        if (::barcodeInput.isInitialized && barcodeInput.text.toString().isNotBlank() &&
+            BarcodeGenerator.validate(currentBarcodeType, barcodeInput.text.toString()) == null
+        ) {
             renderBarcodePreview()
         }
     }
@@ -1353,17 +1367,22 @@ class MainActivity : Activity() {
         }
     }
 
-    /** 文字页预览 */
+    /** 文字页预览（try-catch 与其他 render 一致，2026-08-11 补） */
     private fun renderTextPreview() {
         val text = input.text.toString().trim()
         if (text.isEmpty()) {
             textStatus.text = "请先输入文字"
             return
         }
-        val raster = encodeTextWithSettings(text)
-        val bmp = RasterEncoder.rasterToPreviewBitmap(raster)
-        textPreview.setImageBitmap(bmp)
-        textStatus.text = "预览：${raster.widthBytes * 8}×${raster.height} 点，约 ${"%.0f".format(raster.height / 8.0)}mm 高"
+        try {
+            val raster = encodeTextWithSettings(text)
+            val bmp = RasterEncoder.rasterToPreviewBitmap(raster)
+            textPreview.setImageBitmap(bmp)
+            textStatus.text = "预览：${raster.widthBytes * 8}×${raster.height} 点，约 ${"%.0f".format(raster.height / 8.0)}mm 高"
+        } catch (e: Exception) {
+            textStatus.setTextColor(Design.ERROR)
+            textStatus.text = "预览生成失败：${e.javaClass.simpleName} ${e.message}"
+        }
     }
 
     /** 图片页预览 */
