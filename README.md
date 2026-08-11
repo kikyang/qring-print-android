@@ -18,6 +18,16 @@
 
 最新版见 [Releases](https://github.com/kikyang/qring-print-android/releases)（v0.2.0，5.3MB，需 Android 13+）。
 
+## 界面预览
+
+| 首页 | 文字打印 | 图片打印 |
+|---|---|---|
+| ![首页](screenshots/home.png) | ![文字](screenshots/text.png) | ![图片](screenshots/image.png) |
+
+| 错题卡 | 条码打印 | 我的（设置/历史/设备） |
+|---|---|---|
+| ![错题卡](screenshots/card.png) | ![条码](screenshots/barcode.png) | ![我的](screenshots/mine.png) |
+
 ## 功能
 
 ### 打印（六入口，全部打印前自动预览确认，取消零耗纸）
