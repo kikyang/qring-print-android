@@ -65,6 +65,7 @@ gradle assembleDebug      # 调试版
 │       ├── Design.kt                # M3 设计系统（含 Material Symbols 图标）
 │       └── MainActivity.kt          # 三 Tab 主界面
 ├── docs/
+│   ├── architecture.md   # 人类可读的架构说明（推荐先读）
 │   ├── protocol.md       # 完整协议（指令表/状态位/时序/光栅编码）
 │   └── 实物联调手册.md    # 联调操作手册
 ├── reference/qrintprint/ # QrintPrint 源码归档（MIT，仅参考）
