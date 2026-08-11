@@ -24,7 +24,7 @@ const val CHUNK_DELAY_MS = 1L
 
 // ── 打印控制 ────────────────────────────────────────────────
 val CMD_ENABLE = byteArrayOf(0x10, 0xFF.toByte(), 0xF1.toByte(), 0x02)
-val CMD_ENABLE2 = byteArrayOf(0x1F, 0xB2.toByte(), 0x10)
+// 注意：不要用 ENABLE2（1F B2 10）——X1 固件不识别，会被文本引擎渲染成「固」字乱码
 val CMD_STOP = byteArrayOf(0x10, 0xFF.toByte(), 0xF1.toByte(), 0x45)
 /** 唤醒：12 个 0x00 */
 val CMD_WAKEUP = ByteArray(12)

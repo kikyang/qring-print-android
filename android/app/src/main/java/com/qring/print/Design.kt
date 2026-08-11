@@ -14,15 +14,16 @@ import android.widget.RadioGroup
 import android.widget.TextView
 
 /**
- * 设计系统 —— Material 3 规范（2026-08-11 按 material-3 skill 重构）。
+ * 设计系统 —— 微信小程序风格（2026-08-11 用户选定，替换原 M3 学习绿）。
  *
- * M3 核心应用：
- * - **Tonal surface 代替阴影**：卡片用 surface-container-low 色（不用 elevation 阴影）
- * - **圆角刻度**：卡片 medium(12dp)、按钮/分段 full(胶囊)、输入框 small(8dp)
- * - **8dp 间距体系**：页面 16dp、卡片内 16dp、元素 gap 8dp
- * - **色板 token**：primary/on-primary/primary-container/surface/outline 等 M3 角色
- * - **深色模式**：跟随系统（MainActivity.onResume 检测 uiMode 设置 [isDark]），双色板
- * 主色：学习绿 seed #2E7D32（用户 2026-08-11 选定）。纯代码实现，API 兼容。
+ * 微信风核心：
+ * - **灰底白卡**：页面背景 #F7F7F7，卡片纯白 #FFFFFF 圆角 8px，卡间靠间距分层（无阴影）
+ * - **微信绿主色** #07C160：按钮/选中态/强调
+ * - **文字层级**：主 #191919 / 次 #888888 / 辅助 #B2B2B2
+ * - **分隔线** #EBEDF0
+ * - 按钮为 8px 圆角（非胶囊）；输入框浅灰底无描边
+ * - 深色模式：微信深色风（#111111 底 / #1E1E1E 卡）
+ * 纯代码实现，API 兼容旧调用点。
  */
 object Design {
 
@@ -30,24 +31,24 @@ object Design {
     @Volatile
     var isDark: Boolean = false
 
-    // ── M3 Color Scheme ──
-    // Light: seed 学习绿 #2E7D32 | Dark: M3 dark palette
-    val PRIMARY: Int get() = if (isDark) 0xFF8BD98F.toInt() else 0xFF2E7D32.toInt()
-    val ON_PRIMARY: Int get() = if (isDark) 0xFF00390A.toInt() else 0xFFFFFFFF.toInt()
-    val PRIMARY_DEEP: Int get() = if (isDark) 0xFF9EE7A2.toInt() else 0xFF1B5E20.toInt()
-    val PRIMARY_CONTAINER: Int get() = if (isDark) 0xFF1D5E24.toInt() else 0xFFC8E6C9.toInt()
-    val ON_PRIMARY_CONTAINER: Int get() = if (isDark) 0xFFB7F0B9.toInt() else 0xFF002106.toInt()
-    val SECONDARY_CONTAINER: Int get() = if (isDark) 0xFF35412F.toInt() else 0xFFDCE8D8.toInt()
-    val ON_SECONDARY_CONTAINER: Int get() = if (isDark) 0xFFDCE8D8.toInt() else 0xFF20241E.toInt()
-    val SURFACE: Int get() = if (isDark) 0xFF12140F.toInt() else 0xFFF7FBF4.toInt()
-    val SURFACE_CONTAINER_LOW: Int get() = if (isDark) 0xFF1A1D17.toInt() else 0xFFF1F5EE.toInt()
-    val SURFACE_CONTAINER: Int get() = if (isDark) 0xFF1E211B.toInt() else 0xFFE9EEE7.toInt()
-    val ON_SURFACE: Int get() = if (isDark) 0xFFE2E4DD.toInt() else 0xFF191C20.toInt()
-    val ON_SURFACE_VARIANT: Int get() = if (isDark) 0xFFC3C9BF.toInt() else 0xFF44474E.toInt()
-    val OUTLINE: Int get() = if (isDark) 0xFF8D9389.toInt() else 0xFF737A71.toInt()
-    val OUTLINE_VARIANT: Int get() = if (isDark) 0xFF42483F.toInt() else 0xFFC3CAC1.toInt()
-    val ERROR: Int get() = if (isDark) 0xFFFFB4AB.toInt() else 0xFFBA1A1A.toInt()
-    val OK: Int get() = if (isDark) 0xFF8BD98F.toInt() else 0xFF2E7D32.toInt()
+    // ── 微信小程序风 Color Scheme ──
+    // Light: 微信灰底白卡 + 微信绿 | Dark: 微信深色风
+    val PRIMARY: Int get() = 0xFF07C160.toInt()          // 微信绿（深浅通用）
+    val ON_PRIMARY: Int get() = 0xFFFFFFFF.toInt()
+    val PRIMARY_DEEP: Int get() = 0xFF06AD56.toInt()     // 按下态
+    val PRIMARY_CONTAINER: Int get() = if (isDark) 0xFF1F3D2C.toInt() else 0xFFE8F8EE.toInt()  // 浅绿选中底
+    val ON_PRIMARY_CONTAINER: Int get() = if (isDark) 0xFF8BE8B4.toInt() else 0xFF07C160.toInt()
+    val SECONDARY_CONTAINER: Int get() = if (isDark) 0xFF262626.toInt() else 0xFFF2F3F5.toInt() // 浅灰底
+    val ON_SECONDARY_CONTAINER: Int get() = if (isDark) 0xFFE5E5E5.toInt() else 0xFF191919.toInt()
+    val SURFACE: Int get() = if (isDark) 0xFF111111.toInt() else 0xFFF7F7F7.toInt()             // 页面灰底
+    val SURFACE_CONTAINER_LOW: Int get() = if (isDark) 0xFF1E1E1E.toInt() else 0xFFFFFFFF.toInt() // 白卡
+    val SURFACE_CONTAINER: Int get() = if (isDark) 0xFF2A2A2A.toInt() else 0xFFF2F3F5.toInt()   // 分段/输入底
+    val ON_SURFACE: Int get() = if (isDark) 0xFFE5E5E5.toInt() else 0xFF191919.toInt()          // 主文字
+    val ON_SURFACE_VARIANT: Int get() = if (isDark) 0xFF9A9A9A.toInt() else 0xFF888888.toInt()  // 次文字
+    val OUTLINE: Int get() = if (isDark) 0xFF3A3A3A.toInt() else 0xFFDADADA.toInt()             // 描边
+    val OUTLINE_VARIANT: Int get() = if (isDark) 0xFF2A2A2A.toInt() else 0xFFEBEDF0.toInt()     // 分隔线
+    val ERROR: Int get() = 0xFFFA5151.toInt()
+    val OK: Int get() = 0xFF07C160.toInt()
 
     // ── 兼容别名（旧调用点）──
     val BG: Int get() = SURFACE
@@ -56,23 +57,16 @@ object Design {
     val TEXT_SUB: Int get() = ON_SURFACE_VARIANT
     val DIVIDER: Int get() = OUTLINE_VARIANT
     val PRIMARY_LIGHT: Int get() = PRIMARY_CONTAINER
-    const val RADIUS_SM = 12f   // 小圆角（宫格/设备项等卡片类用 medium 12dp）
+    const val RADIUS_SM = 8f   // 微信小圆角（卡片/按钮/宫格）
 
-    // ── M3 Shape 刻度 ──
-    private const val SHAPE_SMALL = 8f     // 输入框
-    private const val SHAPE_MEDIUM = 12f   // 卡片
-    private const val SHAPE_LARGE = 28f    // 对话框/大容器
-    private const val SHAPE_FULL = 999f    // 按钮/胶囊
-
-    /** 标题栏渐变（浅/深各一组绿渐变） */
-    private fun headerGradient(): GradientDrawable = GradientDrawable(
-        GradientDrawable.Orientation.LEFT_RIGHT,
-        if (isDark) intArrayOf(0xFF1D5E24.toInt(), 0xFF2E7D32.toInt())
-        else intArrayOf(0xFF2E7D32.toInt(), 0xFF4CAF50.toInt())
-    ).apply { cornerRadius = SHAPE_LARGE }
+    // ── Shape 刻度 ──
+    private const val SHAPE_SMALL = 8f     // 卡片/按钮/输入框
+    private const val SHAPE_MEDIUM = 12f   // 大容器
+    private const val SHAPE_LARGE = 28f    // 对话框
+    private const val SHAPE_FULL = 999f    // 兼容旧胶囊调用（segmentGroup 等仍可胶囊）
 
     // ── 圆角背景工具 ──
-    fun rounded(color: Int, radius: Float = SHAPE_MEDIUM, strokeColor: Int? = null, strokeW: Int = 1): GradientDrawable =
+    fun rounded(color: Int, radius: Float = SHAPE_SMALL, strokeColor: Int? = null, strokeW: Int = 1): GradientDrawable =
         GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
             setColor(color)
@@ -94,41 +88,39 @@ object Design {
         setBackgroundColor(SURFACE)
     }
 
-    /** 顶部标题栏：品牌绿渐变 + 大圆角 */
+    /** 顶部标题栏：微信导航栏风（白底黑字 + 底部细分隔线） */
     fun header(text: String): LinearLayout = LinearLayout(Utils.appContext()).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
         setPadding(dp(20), dp(16), dp(20), dp(16))
-        background = headerGradient()
+        setBackgroundColor(SURFACE_CONTAINER_LOW)
         addView(TextView(Utils.appContext()).apply {
             this.text = text
-            textSize = 20f
-            setTextColor(if (isDark) 0xFFB7F0B9.toInt() else Color.WHITE)
+            textSize = 18f
+            setTextColor(ON_SURFACE)
             typeface = Typeface.DEFAULT_BOLD
         })
     }
 
     /**
-     * 卡片：M3 tonal surface 层级（surface-container-low 色 + medium 圆角），
-     * **不用阴影**——M3 用色调层级表达深度。
+     * 卡片：微信风纯白卡 + 8px 圆角（深浅模式自动跟随），无阴影无描边，
+     * 卡间分层靠页面灰底 + 外边距。
      */
     fun card(): LinearLayout = LinearLayout(Utils.appContext()).apply {
         orientation = LinearLayout.VERTICAL
         setPadding(dp(16), dp(16), dp(16), dp(16))
-        background = rounded(SURFACE_CONTAINER_LOW, SHAPE_MEDIUM)
+        background = rounded(SURFACE_CONTAINER_LOW, SHAPE_SMALL)
     }
 
     fun card(container: (LinearLayout.() -> Unit)): LinearLayout = card().also { it.container() }
 
-    // ── 文字（M3 typescale 简化）──
-    /** 小节标题：primary-container 胶囊标签 */
+    // ── 文字（微信层级：标题粗黑 / 正文深灰 / 辅助浅灰）──
+    /** 小节标题：微信"标题"样式（纯文字粗体，无胶囊背景） */
     fun sectionTitle(text: String): TextView = TextView(Utils.appContext()).apply {
         this.text = text
-        textSize = 15f
+        textSize = 16f
         setTextColor(ON_SURFACE)
         typeface = Typeface.DEFAULT_BOLD
-        setPadding(dp(12), dp(6), dp(12), dp(6))
-        background = rounded(PRIMARY_CONTAINER, SHAPE_MEDIUM)
     }
 
     fun caption(text: String): TextView = TextView(Utils.appContext()).apply {
@@ -137,7 +129,7 @@ object Design {
         setTextColor(ON_SURFACE_VARIANT)
     }
 
-    /** 标签（表单字段名）：M3 label-large */
+    /** 标签（表单字段名） */
     fun label(text: String): TextView = TextView(Utils.appContext()).apply {
         this.text = text
         textSize = 13f
@@ -145,23 +137,23 @@ object Design {
         setPadding(0, dp(8), 0, dp(4))
     }
 
-    // ── 按钮（M3：filled / outlined / tonal）──
-    /** Filled 按钮：primary 底 + on-primary 字 + 全胶囊（M3 高强调） */
+    // ── 按钮（微信风：8px 圆角方按钮，非胶囊）──
+    /** 主按钮：微信绿底白字 + 8px 圆角 */
     fun primaryButton(text: String): Button = Button(Utils.appContext()).apply {
         this.text = text
         setTextColor(ON_PRIMARY)
         textSize = 15f
         typeface = Typeface.DEFAULT_BOLD
         isAllCaps = false
-        minHeight = dp(48)
+        minHeight = dp(44)
         setPadding(dp(20), 0, dp(20), 0)
         background = pressable(
-            rounded(PRIMARY, SHAPE_FULL),
-            rounded(PRIMARY_DEEP, SHAPE_FULL),
+            rounded(PRIMARY, SHAPE_SMALL),
+            rounded(PRIMARY_DEEP, SHAPE_SMALL),
         )
     }
 
-    /** Outlined 按钮：surface 底 + outline 描边 + primary 字 + 全胶囊（M3 中强调） */
+    /** 次按钮：白底 + 灰描边 + 绿字 + 8px 圆角 */
     fun outlineButton(text: String): Button = Button(Utils.appContext()).apply {
         this.text = text
         setTextColor(PRIMARY)
@@ -171,12 +163,12 @@ object Design {
         minHeight = dp(40)
         setPadding(dp(16), 0, dp(16), 0)
         background = pressable(
-            rounded(SURFACE, SHAPE_FULL, OUTLINE, dp(1)),
-            rounded(PRIMARY_CONTAINER, SHAPE_FULL, PRIMARY, dp(1)),
+            rounded(SURFACE_CONTAINER_LOW, SHAPE_SMALL, OUTLINE, dp(1)),
+            rounded(PRIMARY_CONTAINER, SHAPE_SMALL, PRIMARY, dp(1)),
         )
     }
 
-    /** Tonal 按钮：secondary-container 底（M3 低强调） */
+    /** 轻按钮：浅灰底 + 深灰字 + 8px 圆角（微信小程序常用） */
     fun ghostButton(text: String): Button = Button(Utils.appContext()).apply {
         this.text = text
         setTextColor(ON_SECONDARY_CONTAINER)
@@ -185,34 +177,29 @@ object Design {
         minHeight = dp(40)
         setPadding(dp(16), 0, dp(16), 0)
         background = pressable(
-            rounded(SECONDARY_CONTAINER, SHAPE_FULL),
-            rounded(if (isDark) 0xFF40503A.toInt() else 0xFFD3D6E0.toInt(), SHAPE_FULL),
+            rounded(SECONDARY_CONTAINER, SHAPE_SMALL),
+            rounded(if (isDark) 0xFF333333.toInt() else 0xFFE0E0E0.toInt(), SHAPE_SMALL),
         )
     }
 
-    // ── 分段控件（M3 Segmented Button：容器 surface-container + 全胶囊）──
-    /**
-     * 分段选择器。选中态背景 = primary-container（浅绿）+ primary 文字；
-     * 未选 = 容器色 + variant 文字。用 checked 状态的 StateListDrawable，
-     * 选中后**持续高亮**（2026-08-11 用户反馈"选中不选中一个色"已修）。
-     */
+    // ── 分段控件（微信 segmented：白底灰边 + 选中浅绿底绿字）──
     fun segmentGroup(items: List<Pair<String, Any?>>, defaultIndex: Int = 0, onChange: ((Int) -> Unit)? = null): RadioGroup =
         RadioGroup(Utils.appContext()).apply {
             orientation = RadioGroup.HORIZONTAL
-            setPadding(dp(4), dp(2), dp(4), dp(2))
-            background = rounded(SURFACE_CONTAINER, SHAPE_FULL)
+            setPadding(dp(2), dp(2), dp(2), dp(2))
+            background = rounded(SURFACE_CONTAINER_LOW, SHAPE_SMALL, OUTLINE, dp(1))
             items.forEachIndexed { i, (label, value) ->
                 val rb = RadioButton(Utils.appContext()).apply {
                     text = label
                     textSize = 13f
                     gravity = Gravity.CENTER
                     isAllCaps = false
-                    minHeight = dp(36)
-                    // checked 态持续高亮（浅绿底），pressed 同色，未选容器色
+                    minHeight = dp(34)
+                    // checked 态持续高亮（浅绿底绿字），未选白底灰字
                     background = StateListDrawable().apply {
-                        addState(intArrayOf(android.R.attr.state_checked), rounded(PRIMARY_CONTAINER, SHAPE_FULL))
-                        addState(intArrayOf(android.R.attr.state_pressed), rounded(PRIMARY_CONTAINER, SHAPE_FULL))
-                        addState(intArrayOf(), rounded(SURFACE_CONTAINER, SHAPE_FULL))
+                        addState(intArrayOf(android.R.attr.state_checked), rounded(PRIMARY_CONTAINER, SHAPE_SMALL))
+                        addState(intArrayOf(android.R.attr.state_pressed), rounded(PRIMARY_CONTAINER, SHAPE_SMALL))
+                        addState(intArrayOf(), rounded(SURFACE_CONTAINER_LOW, SHAPE_SMALL))
                     }
                     setPadding(dp(12), 0, dp(12), 0)
                     setButtonDrawable(android.R.color.transparent)
@@ -235,30 +222,29 @@ object Design {
             check(if (defaultIndex < items.size) getChildAt(defaultIndex).id else getChildAt(0).id)
         }
 
-    // ── 输入框（M3 Outlined Text Field：surface 底 + outline 描边 + small 圆角）──
+    // ── 输入框（微信风：浅灰底无描边 + 8px 圆角）──
     fun input(hint: String, lines: Int = 1): EditText = EditText(Utils.appContext()).apply {
         this.hint = hint
         setHintTextColor(OUTLINE)
         setTextColor(ON_SURFACE)
         textSize = 14f
-        minHeight = dp(48)
+        minHeight = dp(44)
         setPadding(dp(14), dp(8), dp(14), dp(8))
-        background = rounded(SURFACE, SHAPE_SMALL, OUTLINE, dp(1))
+        background = rounded(SURFACE_CONTAINER, SHAPE_SMALL)
         if (lines > 1) {
             minLines = lines
             gravity = Gravity.TOP or Gravity.START
         }
     }
 
-    /** 复选框 */
+    /** 复选框（系统默认，跟随系统色） */
     fun check(text: String): android.widget.CheckBox = android.widget.CheckBox(Utils.appContext()).apply {
         this.text = text
         textSize = 13f
         setTextColor(ON_SURFACE)
     }
 
-    // ── AI 生成统一风格位图图标（assets/icons/，2026-08-11）──
-    // 原 Material Symbols 字体（19.4MB）已随图标换用而删除（无引用）
+    // ── 微信风线性图标（assets/icons/，2026-08-11 全量重制）──
     object Icons {
         private val bitmapCache = HashMap<String, android.graphics.Bitmap?>()
 

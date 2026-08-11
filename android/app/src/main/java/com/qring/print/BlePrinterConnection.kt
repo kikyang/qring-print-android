@@ -40,7 +40,7 @@ import java.util.UUID
 class BlePrinterConnection(
     private val appContext: Context,
     private val scope: CoroutineScope,
-) {
+) : PrinterConnection {
     companion object {
         private val SERVICE_UUID: UUID = UUID.fromString("0000ff00-0000-1000-8000-00805f9b34fb")
         private val WRITE_UUID: UUID = UUID.fromString("0000ff02-0000-1000-8000-00805f9b34fb")
@@ -74,31 +74,31 @@ class BlePrinterConnection(
         private val CMD_ESC_INIT = byteArrayOf(0x1B, 0x40)
     }
 
-    @Volatile var connectedDevice: BluetoothDevice? = null
+    @Volatile override var connectedDevice: BluetoothDevice? = null
         private set
 
-    @Volatile var connected: Boolean = false
+    @Volatile override var connected: Boolean = false
         private set
 
     /** 最近一次状态（轮询 / 查询写入） */
-    @Volatile var lastStatus: QringStatus? = null
+    @Volatile override var lastStatus: QringStatus? = null
         private set
 
-    @Volatile var batteryPercent: Int? = null
+    @Volatile override var batteryPercent: Int? = null
         private set
 
-    @Volatile var deviceModel: String = ""
+    @Volatile override var deviceModel: String = ""
         private set
 
-    @Volatile var firmwareVersion: String = ""
+    @Volatile override var firmwareVersion: String = ""
         private set
 
     /** 蓝牙版本（10 FF 30 10，X1 可能不支持，空串则隐藏） */
-    @Volatile var btVersion: String = ""
+    @Volatile override var btVersion: String = ""
         private set
 
     /** 蓝牙 MAC（10 FF 30 12，可能不支持） */
-    @Volatile var btMac: String = ""
+    @Volatile override var btMac: String = ""
         private set
 
     private var gatt: BluetoothGatt? = null
@@ -123,7 +123,7 @@ class BlePrinterConnection(
      * 连接设备（阻塞调用方协程直到连接成功/失败）。
      * 打印机要求 LE 加密连接：首次连接若失败且设备未配对，自动发起配对并重连。
      */
-    suspend fun connect(device: BluetoothDevice): Boolean = withContext(Dispatchers.IO) {
+    override suspend fun connect(device: BluetoothDevice): Boolean = withContext(Dispatchers.IO) {
         disconnect()
         if (!tryConnect(device)) {
             // 首次连接失败：打印机要求 LE 配对（ISSC 透传），配对后重连
@@ -266,7 +266,7 @@ class BlePrinterConnection(
         }
     }
 
-    suspend fun disconnect() {
+    override suspend fun disconnect() {
         mutex.withLock {
             stopPolling()
             rxBuffer.clear()
@@ -396,14 +396,14 @@ class BlePrinterConnection(
 
     // ── 查询 ──────────────────────────────────────────────────
 
-    suspend fun queryStatus(): QringStatus? {
+    override suspend fun queryStatus(): QringStatus? {
         val resp = query(CMD_STATUS, 1)
         if (resp.isEmpty()) return null
         return parseStatus(resp[0]).also { lastStatus = it }
     }
 
     /** 电量：响应 2 字节，第 2 字节才是百分比 */
-    suspend fun queryBattery(): Int? {
+    override suspend fun queryBattery(): Int? {
         val resp = query(CMD_BATTERY, 2)
         if (resp.size < 2) return null
         return resp[1].also { batteryPercent = it }
@@ -417,7 +417,7 @@ class BlePrinterConnection(
         ).trim()
     }
 
-    suspend fun queryDeviceInfo() {
+    override suspend fun queryDeviceInfo() {
         // X1：设备信息走 10 FF 70（名称|MAC|MAC|固件版本|SN|电量），实测 67 字节
         // 2026-08-11 实测：10 FF 31 全变体无响应（X1 固件不支持），勿用；
         // 固件版本 = 10 FF 70 第 4 段 = 10 FF 20 F1 返回的 V1.05，二者一致
@@ -444,7 +444,7 @@ class BlePrinterConnection(
      * 查不到状态（打印机没回包）时返回 null 放行：宁可让打印试一次、
      * 失败时由 ACK 阶段的故障帧兜住。
      */
-    suspend fun preflightCheck(): String? {
+    override suspend fun preflightCheck(): String? {
         if (!connected) return "打印机未连接"
         val status = queryStatus() ?: return null
         return faultMessage(status)
@@ -465,13 +465,15 @@ class BlePrinterConnection(
      *   - 解法：halveRows=true 先把数据行 OR 合并减半，m=2 双打还原高度 → 黑度↑ 比例不变
      * @param halveRows 行合并减半（仅图片通道，配合 m=2 使用）
      */
-    suspend fun printRaster(
+    // 默认值在接口 PrinterConnection 声明（override 不能重复声明默认值），
+    // 经 PrinterHolder.instance（接口类型）调用时生效
+    override suspend fun printRaster(
         raster: RasterData,
-        thickness: Int? = null,
-        mode: Int = 0,
-        halveRows: Boolean = false,
-        feedBefore: Int? = null,
-        feedAfter: Int? = null,
+        thickness: Int?,
+        mode: Int,
+        halveRows: Boolean,
+        feedBefore: Int?,
+        feedAfter: Int?,
     ): PrintResult {
         if (!connected) return PrintResult(false, "打印机未连接")
         if (busy) return PrintResult(false, "上一个打印任务还没结束")
@@ -535,7 +537,7 @@ class BlePrinterConnection(
     }
 
     /** 查一轮状态 + 电量 */
-    suspend fun refreshAll() {
+    override suspend fun refreshAll() {
         queryStatus()
         queryBattery()
     }
@@ -547,7 +549,7 @@ class BlePrinterConnection(
      * 联调排查用：hex 形如 "10 FF 40"、"1B 4A 32"。
      * @return 响应字节；超时返回已收到的内容（可能为空）
      */
-    suspend fun sendCommand(hex: String, expectBytes: Int = 64): List<Int> {
+    override suspend fun sendCommand(hex: String, expectBytes: Int): List<Int> {
         val clean = hex.replace(" ", "").replace(",", "")
         require(clean.isNotEmpty() && clean.length % 2 == 0) { "hex 格式错误，应为偶数位十六进制" }
         val bytes = ByteArray(clean.length / 2) { i ->
@@ -579,7 +581,7 @@ class BlePrinterConnection(
     }
 
     /** 释放连接（单例模式下不取消全局 scope，只清连接状态） */
-    fun close() {
+    override fun close() {
         stopPolling()
         kotlinx.coroutines.runBlocking { disconnect() }
     }

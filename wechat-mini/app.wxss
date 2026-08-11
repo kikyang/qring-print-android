@@ -1,0 +1,64 @@
+/* app.wxss —— 微信小程序风全局样式（对齐安卓版微信风 Design.kt） */
+page {
+  background: #F7F7F7;
+  color: #191919;
+  font-size: 14px;
+}
+
+/* 微信风白卡 */
+.card {
+  background: #FFFFFF;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 8px;
+}
+
+.card-title {
+  font-size: 16px;
+  font-weight: bold;
+  color: #191919;
+}
+
+.card-caption {
+  font-size: 12px;
+  color: #888888;
+  margin-top: 2px;
+}
+
+/* 微信绿主按钮 */
+.btn-primary {
+  background: #07C160;
+  color: #FFFFFF;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: bold;
+  padding: 12px 0;
+  text-align: center;
+}
+
+.btn-primary:active { background: #06AD56; }
+
+/* 次按钮：浅灰底 */
+.btn-ghost {
+  background: #F2F3F5;
+  color: #191919;
+  border-radius: 8px;
+  font-size: 13.5px;
+  padding: 10px 0;
+  text-align: center;
+}
+
+/* 输入框：浅灰底无描边 */
+.input {
+  background: #F2F3F5;
+  border-radius: 8px;
+  padding: 12px 14px;
+  font-size: 14px;
+}
+
+/* 分隔线 */
+.divider {
+  height: 1px;
+  background: #EBEDF0;
+  margin: 8px 0;
+}

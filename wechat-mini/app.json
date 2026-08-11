@@ -1,0 +1,17 @@
+{
+  "pages": [
+    "pages/index/index",
+    "pages/print-text/print-text",
+    "pages/print-image/print-image",
+    "pages/templates/templates"
+  ],
+  "window": {
+    "navigationBarBackgroundColor": "#FFFFFF",
+    "navigationBarTitleText": "错题小印打印",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#F7F7F7",
+    "backgroundTextStyle": "dark"
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json"
+}

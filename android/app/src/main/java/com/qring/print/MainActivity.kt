@@ -7,6 +7,7 @@ import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanResult
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
@@ -26,6 +27,7 @@ import android.widget.LinearLayout
 import android.widget.RadioButton
 import android.widget.RadioGroup
 import android.widget.ScrollView
+import android.widget.SeekBar
 import android.widget.TextView
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -61,6 +63,7 @@ class MainActivity : Activity() {
     private lateinit var subTabImage: RadioButton
     private lateinit var subTabCard: RadioButton
     private lateinit var subTabBarcode: RadioButton
+    private lateinit var subTabDoc: RadioButton
     // 条码区
     private lateinit var barcodeInput: EditText
     private lateinit var barcodeHint: TextView
@@ -78,11 +81,32 @@ class MainActivity : Activity() {
     // 图片区
     private lateinit var imagePreview: ImageView
     private lateinit var imageStatus: TextView
+    // 文档区（PDF / Word / Excel，2026-08-11 加）
+    private lateinit var docPreview: ImageView
+    private lateinit var docStatus: TextView
+    private var currentDocUri: Uri? = null
+    private var currentDocTitle: String = ""
+    private var currentDocRaster: RasterData? = null
+    private var currentDocMode = 0
+    /** 文档解析协程引用：新解析先取消旧的，防止旧协程结果覆盖新文件（2026-08-11 大文件竞态修复） */
+    private var docParseJob: kotlinx.coroutines.Job? = null
     private lateinit var modeGroup: RadioGroup
     private lateinit var inkGroup: RadioGroup
     private lateinit var trimCheck: CheckBox
     private lateinit var enhanceCheck: CheckBox
     private lateinit var layoutGroup: RadioGroup
+    // 阈值滑块（黑白化阶段，独立于打印浓度）
+    private lateinit var thresholdBar: SeekBar
+    private lateinit var thresholdValue: TextView
+    // 描边（xyprt 移植 2026-08-11）
+    private lateinit var outlineCheck: CheckBox
+    private lateinit var outlineOptions: LinearLayout
+    private lateinit var outlineMethodGroup: RadioGroup
+    private lateinit var outlineThicknessGroup: RadioGroup
+    private lateinit var outlineSmoothCheck: CheckBox
+    private lateinit var outlineInvertCheck: CheckBox
+    private lateinit var outlineSensitivityBar: SeekBar
+    private lateinit var outlineSensitivityValue: TextView
     // 错题卡区
     private lateinit var reasonInput: EditText
     private lateinit var knowledgeInput: EditText
@@ -103,6 +127,7 @@ class MainActivity : Activity() {
     private lateinit var imageContent: LinearLayout
     private lateinit var cardContent: LinearLayout
     private lateinit var barcodeContent: LinearLayout
+    private lateinit var docContent: LinearLayout
     private lateinit var tabHome: LinearLayout
     private lateinit var tabPrint: LinearLayout
     private lateinit var tabMine: LinearLayout
@@ -113,6 +138,7 @@ class MainActivity : Activity() {
 
     private val REQ_BT = 1001
     private val REQ_IMAGE = 1002
+    private val REQ_DOC = 1003
 
     companion object {
         const val PAGE_HOME = 0
@@ -221,6 +247,68 @@ class MainActivity : Activity() {
                     save("text_align_$align.png", RasterEncoder.rasterToPreviewBitmap(
                         RasterEncoder.encodeText("对齐测试", fontSizePx = 48, align = align)))
                 }
+                // 描边（xyprt 移植 2026-08-11）：Canny/Lines + 灵敏度/线宽/反白/平滑对照
+                save("outline_canny.png", imagePreviewRaster(RasterEncoder.encodeOutline(testPhoto, OutlineMethod.CANNY, 88, 1)))
+                save("outline_canny_s30.png", imagePreviewRaster(RasterEncoder.encodeOutline(testPhoto, OutlineMethod.CANNY, 30, 1)))
+                save("outline_lines.png", imagePreviewRaster(RasterEncoder.encodeOutline(testPhoto, OutlineMethod.LINES, 88, 1)))
+                save("outline_thick3.png", imagePreviewRaster(RasterEncoder.encodeOutline(testPhoto, OutlineMethod.CANNY, 88, 3)))
+                save("outline_invert.png", imagePreviewRaster(RasterEncoder.encodeOutline(testPhoto, OutlineMethod.CANNY, 88, 1, invert = true)))
+                save("outline_smooth.png", imagePreviewRaster(RasterEncoder.encodeOutline(testPhoto, OutlineMethod.CANNY, 88, 1, smooth = true)))
+                // PDF 参数对照（阈值 190 + 对比度 10，xyprt PDF 默认）
+                save("contrast_pdf.png", imagePreviewRaster(RasterEncoder.encode(testPhoto, DitherMode.NONE, 190, contrast = 10)))
+                // 文档（2026-08-11 加）：合成 PDF/docx/xlsx 走完整提取/渲染链路
+                runCatching {
+                    val pdfFile = java.io.File(filesDir, "test_selftest.pdf")
+                    val doc = android.graphics.pdf.PdfDocument()
+                    repeat(2) { p ->
+                        val page = doc.startPage(android.graphics.pdf.PdfDocument.PageInfo.Builder(595, 842, p).create())
+                        val c = page.canvas
+                        c.drawColor(Color.WHITE)
+                        c.drawText("错题小印 PDF 自检 第${p + 1}页", 72f, 100f, android.graphics.Paint().apply { textSize = 24f })
+                        c.drawRect(72f, 160f, 400f, 320f, android.graphics.Paint().apply { color = 0xFF2E2E2E.toInt() })
+                        doc.finishPage(page)
+                    }
+                    // PdfDocument 是内存模型，必须 writeTo 才落盘
+                    java.io.FileOutputStream(pdfFile).use { doc.writeTo(it) }
+                    doc.close()
+                    // contentResolver 不吃 file://，自检走 ParcelFileDescriptor 直开
+                    val pdfBmp = PdfPrintRenderer.renderFromFile(pdfFile)
+                    save("pdf_rendered.png", pdfBmp)
+                    save("pdf_printed.png", imagePreviewRaster(RasterEncoder.encode(pdfBmp, DitherMode.NONE, 190, contrast = 10)))
+                }.onFailure { PrintLog.event("PDF 自检失败: ${it.javaClass.simpleName}: ${it.message}") }
+                runCatching {
+                    val docxFile = java.io.File(filesDir, "test_selftest.docx")
+                    java.util.zip.ZipOutputStream(docxFile.outputStream()).use { z ->
+                        fun entry(name: String, content: String) {
+                            z.putNextEntry(java.util.zip.ZipEntry(name))
+                            z.write(content.toByteArray(Charsets.UTF_8))
+                            z.closeEntry()
+                        }
+                        entry("[Content_Types].xml", "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\"><Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/><Default Extension=\"xml\" ContentType=\"application/xml\"/><Override PartName=\"/word/document.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml\"/></Types>")
+                        entry("_rels/.rels", "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"word/document.xml\"/></Relationships>")
+                        entry("word/document.xml", "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:body><w:p><w:r><w:t>Word 自检：第一段</w:t></w:r></w:p><w:p><w:r><w:t xml:space=\"preserve\">第二段 带空格</w:t></w:r></w:p></w:body></w:document>")
+                    }
+                    val paras = DocxTextExtractor.extract(this@MainActivity, Uri.fromFile(docxFile))
+                    save("docx_parsed.png", RasterEncoder.rasterToPreviewBitmap(RasterEncoder.encodeText(paras.joinToString("\n"))))
+                }.onFailure { PrintLog.event("docx 自检失败: ${it.javaClass.simpleName}: ${it.message}") }
+                runCatching {
+                    val xlsxFile = java.io.File(filesDir, "test_selftest.xlsx")
+                    java.util.zip.ZipOutputStream(xlsxFile.outputStream()).use { z ->
+                        fun entry(name: String, content: String) {
+                            z.putNextEntry(java.util.zip.ZipEntry(name))
+                            z.write(content.toByteArray(Charsets.UTF_8))
+                            z.closeEntry()
+                        }
+                        entry("[Content_Types].xml", "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\"><Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/><Default Extension=\"xml\" ContentType=\"application/xml\"/><Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/><Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/><Override PartName=\"/xl/sharedStrings.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml\"/></Types>")
+                        entry("_rels/.rels", "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/></Relationships>")
+                        entry("xl/workbook.xml", "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"><sheets><sheet name=\"Sheet1\" sheetId=\"1\" r:id=\"rId1\"/></sheets></workbook>")
+                        entry("xl/_rels/workbook.xml.rels", "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/><Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings\" Target=\"sharedStrings.xml\"/></Relationships>")
+                        entry("xl/sharedStrings.xml", "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><sst xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" count=\"3\" uniqueCount=\"3\"><si><t>科目</t></si><si><t>成绩</t></si><si><t>数学</t></si></sst>")
+                        entry("xl/worksheets/sheet1.xml", "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetData><row r=\"1\"><c r=\"A1\" t=\"s\"><v>0</v></c><c r=\"B1\" t=\"s\"><v>1</v></c></row><row r=\"2\"><c r=\"A2\" t=\"s\"><v>2</v></c><c r=\"B2\"><v>95</v></c></row></sheetData></worksheet>")
+                    }
+                    val lines = XlsxTextExtractor.extract(this@MainActivity, Uri.fromFile(xlsxFile))
+                    save("xlsx_parsed.png", RasterEncoder.rasterToPreviewBitmap(RasterEncoder.encodeText(lines.joinToString("\n"))))
+                }.onFailure { PrintLog.event("xlsx 自检失败: ${it.javaClass.simpleName}: ${it.message}") }
 
                 // 页面快照（离线渲染 View 树成 PNG，验证布局/配色/图标，不受窗口遮挡影响）
                 fun snapshot(view: View, name: String) {
@@ -241,6 +329,10 @@ class MainActivity : Activity() {
                 snapshot(printPage, "page_print_text.png")
                 subTabImage.isChecked = true
                 snapshot(printPage, "page_print_image.png")
+                // 描边 UI 快照（勾选态）
+                outlineCheck.isChecked = true
+                snapshot(printPage, "page_print_image_outline.png")
+                outlineCheck.isChecked = false
                 subTabCard.isChecked = true
                 snapshot(printPage, "page_print_card.png")
                 subTabBarcode.isChecked = true
@@ -352,7 +444,7 @@ class MainActivity : Activity() {
                     "cover" to "开盖", "thermal" to "过热", "printing" to "打印中"
                 )) {
                     val dot = View(this@MainActivity).apply {
-                        background = Design.rounded(0xFFB4BACB.toInt(), Design.dp(12).toFloat())
+                        background = Design.rounded(Design.TEXT_SUB, Design.dp(12).toFloat())
                     }
                     val label = TextView(this@MainActivity).apply {
                         text = name
@@ -385,6 +477,7 @@ class MainActivity : Activity() {
             GridEntry("image", "图片打印", { switchPage(PAGE_PRINT); subTabImage.isChecked = true }),
             GridEntry("card", "错题卡", { switchPage(PAGE_PRINT); subTabCard.isChecked = true }),
             GridEntry("barcode", "条码打印", { switchPage(PAGE_PRINT); subTabBarcode.isChecked = true }),
+            GridEntry("doc", "文档打印", { switchPage(PAGE_PRINT); subTabDoc.isChecked = true }),
             GridEntry("course", "课程表", { printTemplate { TemplateLibrary.courseTable() } }),
             GridEntry("word", "单词表", { printTemplate { TemplateLibrary.wordList() } }),
             GridEntry("plan", "每日计划", { printTemplate { TemplateLibrary.dailyPlan() } }),
@@ -392,14 +485,18 @@ class MainActivity : Activity() {
         )
         for (i in grid.indices step 2) {
             val g1 = grid[i]
-            val g2 = grid[i + 1]
+            val g2 = grid.getOrNull(i + 1) // 奇数个时最后一行只有一格，右侧占位保持左对齐
             page.addView(Design.row {
                 addView(gridItem(g1.icon, g1.label, g1.action),
                     LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-                addView(gridItem(g2.icon, g2.label, g2.action),
-                    LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                        marginStart = Design.dp(10)
-                    })
+                if (g2 != null) {
+                    addView(gridItem(g2.icon, g2.label, g2.action),
+                        LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                            marginStart = Design.dp(10)
+                        })
+                } else {
+                    addView(View(this@MainActivity), LinearLayout.LayoutParams(0, 1, 1f))
+                }
             }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
                 topMargin = Design.dp(10)
             })
@@ -407,7 +504,7 @@ class MainActivity : Activity() {
 
         page.addView(Design.card {
             addView(Design.sectionTitle("使用提示"))
-            addView(Design.caption("1. 首次使用先连接打印机（我的 → 选择设备）\n2. 打印页顶部切换 文字/图片/错题卡/条码\n3. 拍试卷推荐图片页的一键增强\n4. 所有打印先预览，确认效果再打防废纸"))
+            addView(Design.caption("1. 首次使用先连接打印机（我的 → 选择设备）\n2. 打印页顶部切换 文字/图片/错题卡/条码/文档\n3. 拍试卷推荐图片页的一键增强；文档支持 PDF/Word/Excel\n4. 所有打印先预览，确认效果再打防废纸"))
         })
         return scroll
     }
@@ -456,7 +553,7 @@ class MainActivity : Activity() {
         val subGroup = RadioGroup(this).apply {
             orientation = RadioGroup.HORIZONTAL
             setPadding(Design.dp(4), 0, Design.dp(4), 0)
-            background = Design.rounded(0xFFEDF0F7.toInt(), Design.RADIUS_SM)
+            background = Design.rounded(Design.SURFACE_CONTAINER, Design.RADIUS_SM)
         }
         fun subTab(text: String, iconName: String): RadioButton = RadioButton(this).apply {
             this.text = text
@@ -485,32 +582,37 @@ class MainActivity : Activity() {
         subTabImage = subTab("图片", "image")
         subTabCard = subTab("错题卡", "card")
         subTabBarcode = subTab("条码", "barcode")
+        subTabDoc = subTab("文档", "doc")
         subGroup.addView(subTabText, RadioGroup.LayoutParams(0, RadioGroup.LayoutParams.WRAP_CONTENT, 1f))
         subGroup.addView(subTabImage, RadioGroup.LayoutParams(0, RadioGroup.LayoutParams.WRAP_CONTENT, 1f))
         subGroup.addView(subTabCard, RadioGroup.LayoutParams(0, RadioGroup.LayoutParams.WRAP_CONTENT, 1f))
         subGroup.addView(subTabBarcode, RadioGroup.LayoutParams(0, RadioGroup.LayoutParams.WRAP_CONTENT, 1f))
+        subGroup.addView(subTabDoc, RadioGroup.LayoutParams(0, RadioGroup.LayoutParams.WRAP_CONTENT, 1f))
         subGroup.setOnCheckedChangeListener { _, checkedId ->
             // 切页：只显示当前功能内容，互不掺和
             textContent.visibility = if (checkedId == subTabText.id) View.VISIBLE else View.GONE
             imageContent.visibility = if (checkedId == subTabImage.id) View.VISIBLE else View.GONE
             cardContent.visibility = if (checkedId == subTabCard.id) View.VISIBLE else View.GONE
             barcodeContent.visibility = if (checkedId == subTabBarcode.id) View.VISIBLE else View.GONE
+            docContent.visibility = if (checkedId == subTabDoc.id) View.VISIBLE else View.GONE
             // 着色
-            listOf(subTabText, subTabImage, subTabCard, subTabBarcode).forEach {
+            listOf(subTabText, subTabImage, subTabCard, subTabBarcode, subTabDoc).forEach {
                 it.setTextColor(if (it.id == checkedId) Design.PRIMARY else Design.TEXT_SUB)
             }
         }
         page.addView(subGroup)
 
-        // 四个功能内容块（独立构建，visibility 切换）
+        // 五个功能内容块（独立构建，visibility 切换）
         textContent = buildTextContent()
         imageContent = buildImageContent()
         cardContent = buildCardContent()
         barcodeContent = buildBarcodeContent()
+        docContent = buildDocContent()
         page.addView(textContent)
         page.addView(imageContent)
         page.addView(cardContent)
         page.addView(barcodeContent)
+        page.addView(docContent)
         // 默认文字页
         subTabText.isChecked = true
         return scroll
@@ -636,6 +738,100 @@ class MainActivity : Activity() {
             addView(enhanceCheck, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
                 topMargin = Design.dp(4)
             })
+            // 二值化阈值（2026-08-11 加，xyprt 借鉴）：黑白化阶段调"哪些像素算黑"，
+            // 与打印浓度（"黑得多黑"）独立叠加调节。仅"无(锐利)"模式生效。
+            addView(Design.row {
+                addView(Design.label("二值化阈值"))
+                thresholdValue = Design.label("${Settings.threshold}")
+                addView(thresholdValue, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    gravity = Gravity.END
+                })
+            })
+            thresholdBar = SeekBar(this@MainActivity).apply {
+                max = 255
+                progress = Settings.threshold
+                setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                    override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
+                        thresholdValue.text = "$progress"
+                    }
+                    override fun onStartTrackingTouch(sb: SeekBar?) {}
+                    override fun onStopTrackingTouch(sb: SeekBar) {
+                        Settings.threshold = sb.progress
+                        autoRefreshImagePreview()
+                    }
+                })
+            }
+            addView(thresholdBar, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = Design.dp(2)
+            })
+            // 描边模式（xyprt 移植 2026-08-11）：独立管线，不经过灰度/对比度；
+            // 勾选时置灰冲突选项（抖动/消除笔/裁边/增强/阈值）
+            outlineCheck = Design.check("✏️ 描边模式（Canny 线稿 / Lines 描边）")
+            outlineCheck.setOnCheckedChangeListener { _, checked ->
+                val disabled = listOf(modeGroup, inkGroup, trimCheck, enhanceCheck, thresholdBar)
+                disabled.forEach { it.isEnabled = !checked }
+                outlineOptions.visibility = if (checked) View.VISIBLE else View.GONE
+                autoRefreshImagePreview()
+            }
+            addView(outlineCheck, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = Design.dp(4)
+            })
+            outlineOptions = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL; visibility = View.GONE }
+            outlineOptions.addView(Design.label("描边算法"))
+            outlineMethodGroup = Design.segmentGroup(
+                OutlineMethod.entries.map { it.label to it },
+                defaultIndex = OutlineMethod.entries.indexOf(Settings.outlineMethod),
+            ) { autoRefreshImagePreview() }
+            outlineOptions.addView(outlineMethodGroup)
+            outlineOptions.addView(Design.row {
+                addView(Design.label("灵敏度（越大边缘越多）"))
+                outlineSensitivityValue = Design.label("${Settings.outlineSensitivity}")
+                addView(outlineSensitivityValue, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    gravity = Gravity.END
+                })
+            })
+            outlineSensitivityBar = SeekBar(this@MainActivity).apply {
+                max = 100
+                progress = Settings.outlineSensitivity
+                setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                    override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
+                        outlineSensitivityValue.text = "$progress"
+                    }
+                    override fun onStartTrackingTouch(sb: SeekBar?) {}
+                    override fun onStopTrackingTouch(sb: SeekBar) {
+                        Settings.outlineSensitivity = sb.progress
+                        autoRefreshImagePreview()
+                    }
+                })
+            }
+            outlineOptions.addView(outlineSensitivityBar, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = Design.dp(2)
+            })
+            outlineOptions.addView(Design.label("线宽"))
+            outlineThicknessGroup = Design.segmentGroup(
+                listOf("细" to 1, "中" to 2, "粗" to 3),
+                defaultIndex = (Settings.outlineThickness - 1).coerceIn(0, 2),
+            ) { autoRefreshImagePreview() }
+            outlineOptions.addView(outlineThicknessGroup)
+            outlineSmoothCheck = Design.check("平滑（去毛刺/小噪点）")
+            outlineSmoothCheck.isChecked = Settings.outlineSmooth
+            outlineSmoothCheck.setOnCheckedChangeListener { _, checked ->
+                Settings.outlineSmooth = checked
+                autoRefreshImagePreview()
+            }
+            outlineOptions.addView(outlineSmoothCheck, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = Design.dp(4)
+            })
+            outlineInvertCheck = Design.check("反白（黑底白线）")
+            outlineInvertCheck.isChecked = Settings.outlineInvert
+            outlineInvertCheck.setOnCheckedChangeListener { _, checked ->
+                Settings.outlineInvert = checked
+                autoRefreshImagePreview()
+            }
+            outlineOptions.addView(outlineInvertCheck, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = Design.dp(4)
+            })
+            addView(outlineOptions)
         })
 
         col.addView(Design.card {
@@ -920,6 +1116,181 @@ class MainActivity : Activity() {
     }
 
     /** 条码打印：预览确认 → 图片通道（m=2 + 行合并） */
+    // ── 文档内容块（PDF / Word / Excel，2026-08-11 加）──
+    private fun buildDocContent(): LinearLayout {
+        val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+
+        col.addView(Design.card {
+            addView(Design.sectionTitle("文档打印"))
+            addView(Design.caption("PDF 逐页图片打印 · Word/Excel/TXT 文本打印（支持老格式 doc/xls）"))
+            val pickBtn = Design.outlineButton("📄 选择文档（PDF / docx / xlsx / doc / xls / txt）")
+            addView(pickBtn, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = Design.dp(8)
+            })
+            pickBtn.setOnClickListener {
+                // 文件筛选（2026-08-11 修：*/* 会把图片等全显示出来）
+                val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
+                    type = "*/*"
+                    putExtra(Intent.EXTRA_MIME_TYPES, arrayOf(
+                        "application/pdf",
+                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        "application/msword",                       // .doc 老格式（解析会提示不支持）
+                        "application/vnd.ms-excel",                  // .xls 老格式
+                        "text/plain",                                // .txt
+                    ))
+                }
+                startActivityForResult(intent, REQ_DOC)
+            }
+        })
+
+        col.addView(Design.card {
+            addView(Design.sectionTitle("打印预览"))
+            docPreview = ImageView(this@MainActivity).apply {
+                adjustViewBounds = true
+                scaleType = ImageView.ScaleType.FIT_CENTER
+            }
+            addView(docPreview, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = Design.dp(8)
+            })
+            addView(Design.caption("先预览再打印，防废纸"))
+            val previewBtn = Design.outlineButton("👁 预览打印效果")
+            addView(previewBtn, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = Design.dp(8)
+            })
+            previewBtn.setOnClickListener { renderDocPreview() }
+        })
+
+        val printBtn = Design.primaryButton("🖨 打印文档")
+        col.addView(printBtn, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+            topMargin = Design.dp(4)
+        })
+        printBtn.setOnClickListener { doPrintDoc() }
+
+        docStatus = Design.caption("")
+        col.addView(docStatus)
+        return col
+    }
+
+    /**
+     * 按扩展名分派解析 → 光栅。PDF 走图片通道（m=2），Word/Excel 走文字通道（m=0）。
+     * @param onProgress 解析进度回调（阶段文案，大文档防"像没反应"）
+     */
+    private suspend fun renderDocRaster(uri: Uri, name: String, onProgress: (String) -> Unit = {}): Pair<RasterData, Int> =
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val lower = name.lowercase()
+            when {
+                lower.endsWith(".pdf") -> {
+                    val bmp = PdfPrintRenderer.renderToBitmap(this@MainActivity, uri)
+                    RasterEncoder.encode(bmp, DitherMode.NONE, 190, contrast = 10) to 2
+                }
+                lower.endsWith(".docx") -> {
+                    val paras = DocxTextExtractor.extract(this@MainActivity, uri) { n ->
+                        onProgress("已提取 $n 段…")
+                    }
+                    RasterEncoder.encodeText(paras.joinToString("\n")) to 0
+                }
+                lower.endsWith(".xlsx") -> {
+                    val lines = XlsxTextExtractor.extract(this@MainActivity, uri) { n ->
+                        onProgress("已读取 $n 行…")
+                    }
+                    RasterEncoder.encodeText(lines.joinToString("\n")) to 0
+                }
+                lower.endsWith(".txt") || lower.endsWith(".text") -> {
+                    // 流式读 + 大小上限（2026-08-11：readBytes 全量读入大文件会 OOM 闪退）
+                    val text = readTextLimited(this@MainActivity, uri)
+                    RasterEncoder.encodeText(text) to 0
+                }
+                lower.endsWith(".doc") -> {
+                    // 老格式 OLE2：FIB 文本流（UTF-16LE），简单文档可靠
+                    val paras = LegacyDocExtractor.extractDoc(this@MainActivity, uri)
+                    RasterEncoder.encodeText(paras.joinToString("\n")) to 0
+                }
+                lower.endsWith(".xls") -> {
+                    // 老格式 OLE2：BIFF8 SST 共享字符串表
+                    val strs = LegacyDocExtractor.extractXls(this@MainActivity, uri)
+                    RasterEncoder.encodeText(strs.joinToString("\n")) to 0
+                }
+                else -> throw IllegalStateException("不支持的文档类型，请选择 PDF / docx / xlsx / doc / xls / txt")
+            }
+        }
+
+    /**
+     * txt 流式读取（2026-08-11 加）：上限 5MB 防 OOM（readBytes 全量读入大文件会崩）。
+     * 编码：BOM 检测 → UTF-8 严格尝试 → GBK 兜底（中文 txt 常见 GBK）。
+     */
+    private fun readTextLimited(context: Context, uri: Uri): String {
+        val maxBytes = 5 * 1024 * 1024
+        val bytes = context.contentResolver.openInputStream(uri)?.use { input ->
+            val buf = java.io.ByteArrayOutputStream()
+            val tmp = ByteArray(64 * 1024)
+            var total = 0
+            while (true) {
+                val n = input.read(tmp)
+                if (n < 0) break
+                total += n
+                if (total > maxBytes) {
+                    // 截断到上限（防止一次分配超限数组）
+                    buf.write(tmp, 0, n - (total - maxBytes))
+                    break
+                }
+                buf.write(tmp, 0, n)
+            }
+            buf.toByteArray()
+        } ?: throw IllegalStateException("无法读取文件")
+        return decodeText(bytes)
+    }
+
+    /**
+     * txt 解码：BOM 检测 → UTF-8 严格尝试 → GBK 兜底
+     * （中文 txt 常见 GBK 编码，直接按 UTF-8 读会乱码）。
+     */
+    private fun decodeText(bytes: ByteArray): String {
+        if (bytes.size >= 3 && bytes[0] == 0xEF.toByte() && bytes[1] == 0xBB.toByte() && bytes[2] == 0xBF.toByte()) {
+            return String(bytes, 3, bytes.size - 3, Charsets.UTF_8)          // UTF-8 BOM
+        }
+        if (bytes.size >= 2 && bytes[0] == 0xFF.toByte() && bytes[1] == 0xFE.toByte()) {
+            return String(bytes, 2, bytes.size - 2, Charsets.UTF_16LE)       // UTF-16 LE BOM
+        }
+        val utf8 = String(bytes, Charsets.UTF_8)
+        // 含替换符 U+FFFD = 非合法 UTF-8 → 按 GBK 解码（Android 一直可用）
+        return if (utf8.contains('�')) {
+            runCatching { String(bytes, java.nio.charset.Charset.forName("GBK")) }.getOrDefault(utf8)
+        } else {
+            utf8
+        }
+    }
+
+    private fun renderDocPreview() {
+        val raster = currentDocRaster ?: run {
+            docStatus.text = "请先选择文档"
+            return
+        }
+        docPreview.setImageBitmap(imagePreviewRaster(raster))
+    }
+
+    private fun doPrintDoc() {
+        val raster = currentDocRaster ?: run {
+            docStatus.text = "请先选择文档"
+            return
+        }
+        val title = currentDocTitle
+        previewConfirmDialog(title, imagePreviewRaster(raster)) {
+            doPrintConfirmed(
+                raster, mode = currentDocMode, halveRows = currentDocMode == 2,
+                okMessage = "文档打印完成", statusView = docStatus,
+                historyType = "文档", historyTitle = title,
+            )
+        }
+    }
+
+    /** 查询文件显示名（系统文件选择器返回的 uri 只有 id） */
+    private fun queryDisplayName(uri: Uri): String? = runCatching {
+        contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
+            if (it.moveToFirst()) it.getString(0) else null
+        }
+    }.getOrNull()
+
     private fun doPrintBarcode() {
         barcodeStatus.text = "正在生成预览 ..."
         scope.launch {
@@ -966,6 +1337,16 @@ class MainActivity : Activity() {
         page.addView(Design.card {
             addView(Design.sectionTitle("设备管理"))
             addView(Design.caption("已配对 / 扫描到的打印机，点一下连接"))
+            // 连接方式（2026-08-11 加：X1 存在多版本，透传版走 BLE、经典版走 SPP）
+            addView(Design.label("连接方式"))
+            val modeGroup = Design.segmentGroup(
+                ConnectionMode.entries.map { it.label to it },
+                defaultIndex = ConnectionMode.entries.indexOf(Settings.connectionMode),
+            ) { i ->
+                Settings.connectionMode = ConnectionMode.entries[i]
+            }
+            addView(modeGroup)
+            addView(Design.caption("自动 = 先试 BLE 透传，无响应自动改走经典蓝牙"))
             deviceArea = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL }
             addView(deviceArea, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
                 topMargin = Design.dp(8)
@@ -1031,7 +1412,7 @@ class MainActivity : Activity() {
                     // 动态读版本号（与 build.gradle.kts versionName 同步，2026-08-11 修硬编码）
                     text = "v" + runCatching {
                         packageManager.getPackageInfo(packageName, 0).versionName
-                    }.getOrDefault("0.2.0")
+                    }.getOrDefault("0.3.0")
                     textSize = 12f
                     setTextColor(Design.TEXT_SUB)
                     gravity = Gravity.END
@@ -1043,14 +1424,14 @@ class MainActivity : Activity() {
             val selfTestLink = TextView(this@MainActivity).apply {
                 text = "打印测试页"
                 textSize = 11f
-                setTextColor(0xFFB4BACB.toInt())
+                setTextColor(Design.TEXT_SUB)
                 setPadding(0, Design.dp(8), 0, 0)
                 setOnClickListener { printSelfTest() }
             }
             val debugLink = TextView(this@MainActivity).apply {
                 text = "调试台"
                 textSize = 11f
-                setTextColor(0xFFB4BACB.toInt())
+                setTextColor(Design.TEXT_SUB)
                 setPadding(0, Design.dp(8), 0, 0)
                 setOnClickListener { startActivity(Intent(this@MainActivity, DebugActivity::class.java)) }
             }
@@ -1125,6 +1506,86 @@ class MainActivity : Activity() {
                 loadImage(uri)?.let { selectedImages.add(it) }
             }
             updateThumbnail()
+        }
+        // 文档（PDF / Word / Excel）：选中即异步解析 + 预览
+        if (requestCode == REQ_DOC && resultCode == RESULT_OK) {
+            val uri = data?.data ?: return
+            val name = queryDisplayName(uri) ?: "文档"
+            currentDocUri = uri
+            currentDocTitle = name
+            currentDocRaster = null
+            // 立即清旧预览（2026-08-11 修：切新文件时旧图挂 ImageView 上，
+            // 解析期间/失败时界面看起来"没刷新"）
+            docPreview.setImageDrawable(null)
+            docStatus.setTextColor(Design.TEXT_SUB)
+            docStatus.text = "⏳ 正在解析 $name ..."
+            // 解析加载对话框（2026-08-11 加：大 Word/Excel 解析要几秒~几十秒，
+            // 静态文案像没反应；进度条 + 阶段文案 + 可取消）
+            val parseLabel = TextView(this).apply {
+                textSize = 13f
+                setTextColor(Design.TEXT)
+                text = "正在解析 $name …"
+                setPadding(0, Design.dp(4), 0, Design.dp(10))
+            }
+            val parseBar = android.widget.ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+                max = 100
+                isIndeterminate = true
+            }
+            val parseContent = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(Design.dp(24), Design.dp(8), Design.dp(24), Design.dp(8))
+                addView(parseLabel)
+                addView(parseBar)
+            }
+            val parseDialog = AlertDialog.Builder(this)
+                .setTitle("📄 正在解析文档")
+                .setView(parseContent)
+                .setNegativeButton("取消", null)
+                .create()
+            parseDialog.show()
+            // 新解析先取消旧的（大文件竞态：旧协程晚完成会覆盖新文件结果）
+            docParseJob?.cancel()
+            docParseJob = scope.launch {
+                try {
+                    val uiHandler = android.os.Handler(android.os.Looper.getMainLooper())
+                    val (raster, mode) = renderDocRaster(uri, name) { progress ->
+                        // 解析在 IO 线程，进度回传切主线程更新 UI
+                        uiHandler.post { parseLabel.text = "正在解析 $name … $progress" }
+                    }
+                    if (parseDialog.isShowing) parseDialog.dismiss()
+                    currentDocRaster = raster
+                    currentDocMode = mode
+                    docStatus.setTextColor(Design.TEXT)
+                    // 空/极少内容（<64 行）提示，避免"选完没反应"的困惑（2026-08-11）
+                    if (raster.height < 64) {
+                        docStatus.setTextColor(Design.ERROR)
+                        docStatus.text = "⚠️ $name 没有可打印的内容（可能文档是空的）"
+                        docPreview.setImageDrawable(null)
+                        return@launch
+                    }
+                    docStatus.text = "✅ $name（${raster.height} 行，点击预览确认）"
+                    docPreview.setImageBitmap(imagePreviewRaster(raster))
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e   // 被新任务/用户取消：不吞，保持取消语义
+                } catch (e: OutOfMemoryError) {
+                    // OOM 是 Error 不是 Exception，必须单独抓（2026-08-11 大文件闪退根因）
+                    if (parseDialog.isShowing) parseDialog.dismiss()
+                    PrintLog.event("文档解析 OOM: ${e.message}")
+                    docStatus.setTextColor(Design.ERROR)
+                    docStatus.text = "文件过大内存不足，请用较小文档重试"
+                } catch (e: Throwable) {
+                    if (parseDialog.isShowing) parseDialog.dismiss()
+                    PrintLog.event("文档解析失败: ${e.message}")
+                    docStatus.setTextColor(Design.ERROR)
+                    docStatus.text = "解析失败：${e.message}"
+                }
+            }
+            parseDialog.getButton(AlertDialog.BUTTON_NEGATIVE).setOnClickListener {
+                docParseJob?.cancel()
+                parseDialog.dismiss()
+                docStatus.text = "已取消解析"
+                docStatus.setTextColor(Design.TEXT_SUB)
+            }
         }
     }
 
@@ -1245,7 +1706,7 @@ class MainActivity : Activity() {
         item.addView(TextView(this).apply {
             text = dev.address
             textSize = 10f
-            setTextColor(0xFFB4BACB.toInt())
+            setTextColor(Design.TEXT_SUB)
         })
         val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
         lp.topMargin = Design.dp(6)
@@ -1288,7 +1749,7 @@ class MainActivity : Activity() {
         }
         val green = 0xFF3FAE4F.toInt()
         val red = 0xFFE04A3A.toInt()
-        val gray = 0xFFB4BACB.toInt()
+        val gray = Design.TEXT_SUB
         val blue = 0xFF2196F3.toInt()
         setLight("paper", st?.let { if (it.noPaper) red else green } ?: gray)
         setLight("cover", st?.let { if (it.coverOpen) red else green } ?: gray)
@@ -1319,8 +1780,39 @@ class MainActivity : Activity() {
         statusText.text = "⏳ 正在连接 $name ..."
         statusText.setTextColor(Design.TEXT_SUB)
         statusBadge.text = "● 连接中"
-        scope.launch {
-            val ok = printer.connect(dev)
+        // 连接进度对话框（2026-08-11 加：AUTO 模式最坏约 40 秒，进度条 + 阶段文案防"像死机"）
+        val progressBar = android.widget.ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            max = 100
+            progress = 0
+            isIndeterminate = false
+        }
+        val progressLabel = TextView(this).apply {
+            textSize = 12f
+            setTextColor(Design.TEXT_SUB)
+            text = "正在连接 $name …"
+            setPadding(0, Design.dp(8), 0, 0)
+        }
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(Design.dp(24), Design.dp(8), Design.dp(24), Design.dp(4))
+            addView(progressBar)
+            addView(progressLabel)
+        }
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("🖨 正在连接打印机")
+            .setView(content)
+            .setNegativeButton("取消", null)
+            .create()
+        dialog.show()
+        var job: kotlinx.coroutines.Job? = null
+        job = scope.launch {
+            // 双通道分派（AUTO/BLE/SPP），阶段文案 + 进度实时驱动状态栏和对话框
+            val ok = PrinterHolder.connect(dev) { phase, progress ->
+                statusText.text = "⏳ $phase"
+                progressLabel.text = phase
+                if (progress != null) progressBar.progress = progress
+            }
+            if (dialog.isShowing) dialog.dismiss()
             if (ok) {
                 statusBadge.text = "● 已连接"
                 statusBadge.setTextColor(Color.WHITE)
@@ -1336,12 +1828,22 @@ class MainActivity : Activity() {
                 startStatusRefresh()
             } else {
                 statusBadge.text = "● 未连接"
-                statusBadge.setTextColor(0xFFD8E2FF.toInt())
-                statusBadge.background = Design.rounded(0x33FFFFFF, Design.RADIUS_SM)
+                statusBadge.setTextColor(Design.TEXT_SUB)
+                statusBadge.background = Design.rounded(Design.SECONDARY_CONTAINER, Design.RADIUS_SM)
                 statusText.text = "❌ 连接失败，请确认打印机已开机并处于配对状态"
                 statusText.setTextColor(Design.ERROR)
             }
             switchPage(PAGE_HOME)
+        }
+        // 取消：中断连接协程（底层阻塞操作无法立即中断，但 UI 立即恢复可操作）
+        dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setOnClickListener {
+            job?.cancel()
+            dialog.dismiss()
+            statusBadge.text = "● 未连接"
+            statusBadge.setTextColor(Design.TEXT_SUB)
+            statusBadge.background = Design.rounded(Design.SECONDARY_CONTAINER, Design.RADIUS_SM)
+            statusText.text = "已取消连接"
+            statusText.setTextColor(Design.TEXT_SUB)
         }
     }
 
@@ -1361,8 +1863,28 @@ class MainActivity : Activity() {
         return RasterEncoder.rasterToPreviewBitmap(half, verticalScale = 2)
     }
 
-    /** 图片预处理：裁白边 + 消除笔，再拼接 + 抖动/增强 */
+    /** 图片预处理：裁白边 + 消除笔，再拼接 + 抖动/增强/描边 */
     private fun encodeSelectedImages(images: List<Bitmap>): RasterData {
+        // 描边独立管线（最优先，2026-08-11 加）：不经过裁边/消除笔/灰度，
+        // 直接在拼接图上做边缘检测（xyprt toMono OUTLINE 分支语义）
+        if (outlineCheck.isChecked) {
+            val layout = (layoutGroup.checkedRadioButtonId.takeIf { it != -1 }
+                ?.let { layoutGroup.findViewById<RadioButton>(it)?.tag as? Int }) ?: 1
+            val composed = if (images.size > 1) RasterEncoder.composeImages(images, layout) else images[0]
+            val method = (outlineMethodGroup.checkedRadioButtonId.takeIf { it != -1 }
+                ?.let { outlineMethodGroup.findViewById<RadioButton>(it)?.tag as? OutlineMethod })
+                ?: Settings.outlineMethod
+            val thickness = (outlineThicknessGroup.checkedRadioButtonId.takeIf { it != -1 }
+                ?.let { outlineThicknessGroup.findViewById<RadioButton>(it)?.tag as? Int })
+                ?: Settings.outlineThickness
+            return RasterEncoder.encodeOutline(
+                composed, method,
+                sensitivity = outlineSensitivityBar.progress,
+                thickness = thickness,
+                smooth = outlineSmoothCheck.isChecked,
+                invert = outlineInvertCheck.isChecked,
+            )
+        }
         val layout = (layoutGroup.checkedRadioButtonId.takeIf { it != -1 }
             ?.let { layoutGroup.findViewById<RadioButton>(it)?.tag as? Int }) ?: 1
         val inkMode = (inkGroup.checkedRadioButtonId.takeIf { it != -1 }
@@ -1377,7 +1899,7 @@ class MainActivity : Activity() {
             val mode = (modeGroup.checkedRadioButtonId.takeIf { it != -1 }
                 ?.let { modeGroup.findViewById<RadioButton>(it)?.tag as? DitherMode })
                 ?: DitherMode.NONE
-            RasterEncoder.encode(composed, mode)
+            RasterEncoder.encode(composed, mode, thresholdBar.progress)
         }
     }
 

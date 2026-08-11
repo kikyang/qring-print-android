@@ -1,0 +1,49 @@
+<!-- 首页：连接状态 + 功能宫格（微信风） -->
+<view class="page">
+  <!-- 连接卡片 -->
+  <view class="card">
+    <view class="card-title">🖨 打印机</view>
+    <view class="card-caption">{{connected ? '已连接：' + deviceName : '未连接，请先扫描打印机'}}</view>
+    <view wx:if="{{connected}}" class="status-row">
+      <text class="status-ok">● 已连接</text>
+      <text class="card-caption">{{modelText}}</text>
+    </view>
+    <button class="btn-primary connect-btn" bindtap="onScan" wx:if="{{!scanning && !connected}}">
+      {{scanning ? '扫描中…' : '🔍 扫描打印机'}}
+    </button>
+    <button class="btn-ghost connect-btn" bindtap="onDisconnect" wx:if="{{connected}}">断开连接</button>
+
+    <!-- 扫描结果 -->
+    <view wx:if="{{devices.length > 0 && !connected}}" class="device-list">
+      <view class="device-item" wx:for="{{devices}}" wx:key="deviceId"
+            bindtap="onConnect" data-id="{{item.deviceId}}" data-name="{{item.name || item.localName}}">
+        <text class="device-name">{{item.name || item.localName}}</text>
+        <text class="card-caption">{{item.deviceId}}</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 功能宫格 -->
+  <view class="card">
+    <view class="card-title">功能</view>
+    <view class="grid">
+      <view class="grid-item" bindtap="goText">
+        <view class="grid-icon grid-icon-text"></view>
+        <text>文字打印</text>
+      </view>
+      <view class="grid-item" bindtap="goImage">
+        <view class="grid-icon grid-icon-image"></view>
+        <text>图片打印</text>
+      </view>
+      <view class="grid-item" bindtap="goTemplates">
+        <view class="grid-icon grid-icon-template"></view>
+        <text>模板</text>
+      </view>
+    </view>
+  </view>
+
+  <view class="card">
+    <view class="card-caption">提示：仅支持 BLE 透传版 X1（微信无 SPP 通道）。
+      打印前先预览，确认效果再打防废纸。</view>
+  </view>
+</view>

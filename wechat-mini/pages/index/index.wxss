@@ -1,0 +1,35 @@
+.page { padding: 16px; }
+
+.connect-btn { margin-top: 12px; }
+
+.status-row { display: flex; align-items: center; margin-top: 8px; gap: 8px; }
+.status-ok { color: #07C160; font-size: 13px; font-weight: bold; }
+
+.device-list { margin-top: 12px; }
+.device-item {
+  display: flex; flex-direction: column;
+  background: #F2F3F5; border-radius: 8px;
+  padding: 10px 12px; margin-top: 8px;
+}
+.device-name { font-size: 14px; color: #191919; }
+
+/* 功能宫格 */
+.grid { display: flex; margin-top: 12px; gap: 12px; }
+.grid-item {
+  flex: 1; display: flex; flex-direction: column; align-items: center;
+  background: #F7F7F7; border-radius: 8px; padding: 16px 0;
+  font-size: 13px; color: #191919;
+}
+.grid-icon {
+  width: 44px; height: 44px; margin-bottom: 8px;
+  border-radius: 10px;
+  background-color: #07C160;
+  /* 用纯 CSS 画简易线性图标（微信风） */
+}
+.grid-icon-text { background-image: linear-gradient(#07C160, #07C160 20%, transparent 20%, transparent 40%, #07C160 40%, #07C160 60%, transparent 60%, transparent 80%, #07C160 80%); }
+.grid-icon-image {
+  background-image:
+    linear-gradient(#07C160, #07C160) no-repeat center / 60% 60%;
+  border: 2px solid #07C160;
+}
+.grid-icon-template { background-image: linear-gradient(90deg, #07C160 25%, transparent 25%, transparent 50%, #07C160 50%, #07C160 75%, transparent 75%); }

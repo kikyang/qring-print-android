@@ -18,6 +18,12 @@ object RasterEncoder {
 
     /** 文字二值化阈值。官方 App 打文字用 212，比图片高很多，笔画才不会被吃掉 */
     const val THRESHOLD_TEXT = 212
+    /**
+     * 文本/表格渲染高度上限（像素行）。Excel 几千行直接渲染会把 Bitmap 撑到
+     * GB 级 OOM（2026-08-11 真机闪退根因：1.9GB 分配失败）。
+     * 384 宽 × 30000 行 × 4B ≈ 46MB，加灰度和二值数组约 140MB，安全线内。
+     */
+    const val MAX_TEXT_HEIGHT = 30000
     /** 图片二值化阈值（仅 NONE 模式生效） */
     const val THRESHOLD_IMAGE = 128
 
@@ -31,10 +37,19 @@ object RasterEncoder {
         bitmap: Bitmap,
         mode: DitherMode = DitherMode.NONE,
         threshold: Int = THRESHOLD_IMAGE,
+        contrast: Int = 0,
     ): RasterData {
         val gray = extractGrayPublic(bitmap)
-        val binary = Dither.toBinary(gray, mode, threshold)
-        return packPublic(binary, gray.width, gray.height)
+        val data = if (contrast != 0) {
+            // 对比度调节（xyprt 移植，2026-08-11）：膝形 S 曲线，PDF 打印默认 contrast=10
+            val float = FloatArray(gray.data.size) { gray.data[it].toFloat() }
+            val adjusted = Contrast.adjust(float, contrast)
+            GrayImage(IntArray(adjusted.size) { adjusted[it].toInt() }, gray.width, gray.height)
+        } else {
+            gray
+        }
+        val binary = Dither.toBinary(data, mode, threshold)
+        return packPublic(binary, data.width, data.height)
     }
 
     /**
@@ -45,7 +60,9 @@ object RasterEncoder {
         val srcW = bitmap.width
         val srcH = bitmap.height
         val scale = WIDTH_DOTS.toDouble() / srcW
-        val height = maxOf(1, (srcH * scale).toInt())
+        // 高度上限（2026-08-11：大图/长文档位图高度无上限会 OOM 闪退，
+        // 与 MAX_TEXT_HEIGHT/OUTLINE_MAX_HEIGHT 同级别内存安全线）
+        val height = minOf(maxOf(1, (srcH * scale).toInt()), MAX_TEXT_HEIGHT)
 
         val gray = IntArray(WIDTH_DOTS * height)
         for (y in 0 until height) {
@@ -229,6 +246,13 @@ object RasterEncoder {
             }
         }
         if (cur.isNotEmpty()) lines.add(cur)
+        // 高度上限保护（2026-08-11）：Excel/长文档直接渲染会 OOM 闪退（真机 1.9GB 教训）。
+        // 超过上限截断并加提示行，纸也不至于打几米长。
+        val maxLines = ((MAX_TEXT_HEIGHT - padding * 2) / lineHeight).coerceAtLeast(1)
+        if (lines.size > maxLines) {
+            lines.subList(maxLines - 1, lines.size).clear()
+            lines.add("…内容过长，已截断")
+        }
 
         val height = maxOf(1, lines.size * lineHeight + padding * 2)
         val bmp = Bitmap.createBitmap(WIDTH_DOTS, height, Bitmap.Config.ARGB_8888)
@@ -245,5 +269,59 @@ object RasterEncoder {
             y += lineHeight
         }
         return encode(bmp, DitherMode.NONE, THRESHOLD_TEXT)
+    }
+
+    // ── 描边（Canny / LINES，xyprt 移植 2026-08-11）────────────
+
+    /** 描边高度上限（384 宽 × 3 万行内存可控），超出截断 */
+    private const val OUTLINE_MAX_HEIGHT = 30000
+
+    /**
+     * Bitmap → 384 宽 argb 数组 + isGlyph 掩码（与 extractGrayPublic 同采样）。
+     * alpha >= 128 视为"实体像素"（含白色背景），参与描边算法；透明像素视为背景。
+     */
+    private fun extractArgb(bitmap: Bitmap): Pair<IntArray, BooleanArray> {
+        val srcW = bitmap.width
+        val srcH = bitmap.height
+        val scale = WIDTH_DOTS.toDouble() / srcW
+        val height = minOf(maxOf(1, (srcH * scale).toInt()), OUTLINE_MAX_HEIGHT)
+        val argb = IntArray(WIDTH_DOTS * height)
+        val isGlyph = BooleanArray(WIDTH_DOTS * height)
+        for (y in 0 until height) {
+            val srcY = (y / scale).toInt().coerceIn(0, srcH - 1)
+            for (x in 0 until WIDTH_DOTS) {
+                val srcX = (x / scale).toInt().coerceIn(0, srcW - 1)
+                val pixel = bitmap.getPixel(srcX, srcY)
+                val i = y * WIDTH_DOTS + x
+                argb[i] = pixel
+                isGlyph[i] = (pixel ushr 24) and 0xFF >= 128
+            }
+        }
+        return argb to isGlyph
+    }
+
+    /**
+     * 描边模式：完全不经过灰度/对比度，直接对 argb 像素做边缘检测
+     * （xyprt QuickPrintRenderer.toMono 的 OUTLINE 分支语义）。
+     *
+     * @param invert 反色：整体翻转掩码（黑变白、白变黑）
+     */
+    fun encodeOutline(
+        bitmap: Bitmap,
+        method: OutlineMethod = OutlineMethod.CANNY,
+        sensitivity: Int = 88,
+        thickness: Int = 1,
+        smooth: Boolean = false,
+        invert: Boolean = false,
+    ): RasterData {
+        val (argb, isGlyph) = extractArgb(bitmap)
+        val h = isGlyph.size / WIDTH_DOTS
+        val edge = when (method) {
+            OutlineMethod.CANNY -> Canny.detect(argb, isGlyph, WIDTH_DOTS, h, sensitivity, thickness, smooth)
+            OutlineMethod.LINES -> Outline.trace(argb, isGlyph, WIDTH_DOTS, h, sensitivity, thickness, smooth = smooth)
+        }
+        val final = if (invert) BooleanArray(edge.size) { !edge[it] } else edge
+        val binary = ByteArray(final.size) { if (final[it]) 1 else 0 }
+        return packPublic(binary, WIDTH_DOTS, h)
     }
 }
