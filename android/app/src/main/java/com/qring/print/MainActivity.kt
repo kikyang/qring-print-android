@@ -247,6 +247,11 @@ class MainActivity : Activity() {
                 snapshot(printPage, "page_print_barcode.png")
                 subTabText.isChecked = true
                 switchPage(PAGE_MINE)
+                // 快照前清空设备列表：截图用于开源仓库 README，不能含真实设备名/MAC（个人信息）
+                deviceArea.removeAllViews()
+                val placeholder = Design.caption("🔒 设备列表已隐藏（截图用）")
+                placeholder.setPadding(0, Design.dp(8), 0, Design.dp(4))
+                deviceArea.addView(placeholder)
                 snapshot(minePage, "page_mine.png")
                 switchPage(PAGE_HOME)
 
