@@ -817,6 +817,20 @@ class MainActivity : Activity() {
                 topMargin = Design.dp(8)
             })
             addView(Design.caption("先预览再打印，防废纸"))
+            // 手动预览按钮（2026-08-11 补：与其他页一致）
+            val previewBtn = Design.outlineButton("👁 预览打印效果")
+            addView(previewBtn, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = Design.dp(8)
+            })
+            previewBtn.setOnClickListener {
+                val err = BarcodeGenerator.validate(currentBarcodeType, barcodeInput.text.toString())
+                if (err != null) {
+                    barcodeStatus.text = "内容无效：$err"
+                    barcodeStatus.setTextColor(Design.ERROR)
+                } else {
+                    renderBarcodePreview()
+                }
+            }
         })
 
         val printBtn = Design.primaryButton("🏷 打印条码")
@@ -851,17 +865,30 @@ class MainActivity : Activity() {
         autoRefreshBarcodePreview()
     }
 
-    /** 条码自动刷新预览：内容有效且有输入就重渲（2026-08-11 修：原 drawable 守卫导致输入不渲染） */
+    /**
+     * 条码自动刷新预览：
+     * - 内容有效 → 重渲
+     * - 内容无效/空 → 清空预览区（2026-08-11 修：换类型后旧图残留误导，用户反馈"换了类型预览没刷新"）
+     */
     private fun autoRefreshBarcodePreview() {
-        if (::barcodeInput.isInitialized && barcodeInput.text.toString().isNotBlank() &&
-            BarcodeGenerator.validate(currentBarcodeType, barcodeInput.text.toString()) == null
-        ) {
+        if (!::barcodeInput.isInitialized) return
+        val text = barcodeInput.text.toString().trim()
+        if (text.isEmpty()) {
+            if (::barcodePreview.isInitialized) barcodePreview.setImageDrawable(null)
+            return
+        }
+        if (BarcodeGenerator.validate(currentBarcodeType, text) == null) {
             renderBarcodePreview()
+        } else if (::barcodePreview.isInitialized && barcodePreview.drawable != null) {
+            barcodePreview.setImageDrawable(null)
+            barcodeStatus.text = "内容对当前条码类型无效，预览已清空"
+            barcodeStatus.setTextColor(Design.ERROR)
         }
     }
 
     /** 条码预览：校验 → 生成 → 走图片通道渲染 */
     private fun renderBarcodePreview() {
+        if (!::barcodePreview.isInitialized) return  // 构建期字段未就绪保护
         try {
             val err = BarcodeGenerator.validate(currentBarcodeType, barcodeInput.text.toString())
             if (err != null) {
