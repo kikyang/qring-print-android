@@ -1,0 +1,19 @@
+Third-party notices
+===================
+
+QrintPrint (protocol reference)
+-------------------------------
+Portions of this project (the Qring/BeePrt printer protocol implementation)
+are derived from Thisko/QrintPrint, released under the MIT License.
+
+- Project: https://github.com/Thisko/QrintPrint
+- Copyright (c) Thisko/QrintPrint contributors
+- License: MIT
+
+Material Symbols (fonts)
+------------------------
+The icon fonts in android/app/src/main/assets/fonts/ are Material Symbols
+by Google, licensed under the Apache License 2.0.
+
+- https://fonts.google.com/icons
+- https://www.apache.org/licenses/LICENSE-2.0
