@@ -1,6 +1,7 @@
 package com.qring.print
 
 import android.annotation.SuppressLint
+import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothGatt
 import android.bluetooth.BluetoothGattCallback
@@ -590,11 +591,14 @@ data class PrintResult(val ok: Boolean, val message: String)
 /** 光栅数据 */
 data class RasterData(val widthBytes: Int, val height: Int, val data: ByteArray)
 
+/** 获取已配对设备列表（原 SppPrinterConnection 中的函数，SPP 空壳已删，此工具保留） */
+fun pairedDevices(): List<BluetoothDevice> {
+    val adapter = BluetoothAdapter.getDefaultAdapter() ?: return emptyList()
+    return runCatching { adapter.bondedDevices?.toList() ?: emptyList() }.getOrDefault(emptyList())
+}
+
 /** X1 设备信息查询：设备名|MAC|MAC|固件版本|SN|电量 */
 val CMD_DEVICE_INFO = byteArrayOf(0x10, 0xFF.toByte(), 0x70)
-
-/** X1 固件版本查询：返回 "v3.38.21_AY" 这类 */
-val CMD_FW_X1 = byteArrayOf(0x10, 0xFF.toByte(), 0x31)
 
 /** 蓝牙版本（QrintPrint-Windows 命令，X1 待验证） */
 val CMD_BT_VERSION = byteArrayOf(0x10, 0xFF.toByte(), 0x30, 0x10)

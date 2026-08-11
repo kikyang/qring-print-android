@@ -402,7 +402,7 @@ class MainActivity : Activity() {
 
         page.addView(Design.card {
             addView(Design.sectionTitle("使用提示"))
-            addView(Design.caption("1. 首次使用先连接打印机（我的 → 选择设备）\n2. 打印页顶部切换文字/图片/错题卡\n3. 拍试卷推荐图片页的一键增强\n4. 所有打印先预览，确认效果再打防废纸"))
+            addView(Design.caption("1. 首次使用先连接打印机（我的 → 选择设备）\n2. 打印页顶部切换 文字/图片/错题卡/条码\n3. 拍试卷推荐图片页的一键增强\n4. 所有打印先预览，确认效果再打防废纸"))
         })
         return scroll
     }
@@ -1023,7 +1023,10 @@ class MainActivity : Activity() {
                     typeface = Typeface.DEFAULT_BOLD
                 })
                 addView(TextView(this@MainActivity).apply {
-                    text = "v0.2.0"
+                    // 动态读版本号（与 build.gradle.kts versionName 同步，2026-08-11 修硬编码）
+                    text = "v" + runCatching {
+                        packageManager.getPackageInfo(packageName, 0).versionName
+                    }.getOrDefault("0.2.0")
                     textSize = 12f
                     setTextColor(Design.TEXT_SUB)
                     gravity = Gravity.END
