@@ -461,10 +461,12 @@ class MainActivity : Activity() {
             minHeight = Design.dp(40)
             setButtonDrawable(android.R.color.transparent)
             id = View.generateViewId()
-            // 左图标（AI 统一风格位图，20dp）
+            // 左图标（AI 统一风格位图，缩放到 20dp 显示——原图 160px 直接塞会撑高按钮导致图标高低不齐）
             Design.Icons.bitmap(iconName)?.let { bmp ->
+                val sizePx = Design.dp(20)
+                val scaled = android.graphics.Bitmap.createScaledBitmap(bmp, sizePx, sizePx, true)
                 setCompoundDrawablesWithIntrinsicBounds(
-                    android.graphics.drawable.BitmapDrawable(resources, bmp), null, null, null)
+                    android.graphics.drawable.BitmapDrawable(resources, scaled), null, null, null)
                 compoundDrawablePadding = Design.dp(4)
             }
             // checked 态持续高亮（浅绿底），未选容器色——用户能明确当前所处功能页
