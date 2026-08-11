@@ -24,11 +24,11 @@
 
 | 首页 | 文字打印 | 图片打印 |
 |---|---|---|
-| ![首页](screenshots/home.png) | ![文字](screenshots/text.png) | ![图片](screenshots/image.png) |
+| ![首页](screenshots/home_v040.png) | ![文字](screenshots/text_v040.png) | ![图片](screenshots/image_v040.png) |
 
 | 错题卡 | 条码打印 | 我的（设置/历史/设备） |
 |---|---|---|
-| ![错题卡](screenshots/card.png) | ![条码](screenshots/barcode.png) | ![我的](screenshots/mine.png) |
+| ![错题卡](screenshots/card_v040.png) | ![条码](screenshots/barcode_v040.png) | ![我的](screenshots/mine_v040.png) |
 
 ## 功能
 

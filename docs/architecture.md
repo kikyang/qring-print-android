@@ -23,26 +23,35 @@
 
 ---
 
-## 2. 通信层：为什么是 BLE 而不是经典蓝牙
+## 2. 通信层：双通道（BLE 透传 + 经典蓝牙 SPP）
 
-打印机是**双模**设备（BLE + 经典蓝牙 SPP 都有），但 X1 的实际情况是：
+打印机是**双模**设备（BLE + 经典蓝牙 SPP 都有），但 X1 存在**多个软件版本**，
+不同版本的控制通道不同（2026-08-11 实测确认）：
 
-- SPP（经典蓝牙串口）**是空壳**：能连上，但发了数据没人消费
-- **BLE 透传才是真通道**：一个"传话筒"服务（FF00），两个特征：
-  - `FF02` 写特征 —— 手机 → 打印机（所有指令和图片数据都从这里进）
-  - `FF01` 通知特征 —— 打印机 → 手机（查询响应、打印完成 ACK、故障上报）
+- **BLE 透传版**（本机 X1，固件 V1.05）：控制通道是 BLE GATT——
+  - `FF00` 服务，`FF02` 写特征（手机 → 打印机），`FF01` 通知特征（打印机 → 手机）
+  - 连接必须指定 `TRANSPORT_LE`（双模设备默认走 BR/EDR 会连不上 GATT）
+  - 此版本 **SPP 是空壳**：RFCOMM 能连上，但发了数据没人消费
+- **经典蓝牙版**：控制通道是 SPP（RFCOMM，标准串口 UUID），BLE 反而无响应
 
-BLE 是分包传输的，**单包上限很小**（默认 20 字节，我们实测 32 字节稳定），
-所以大块数据必须自己切碎、排队、按节奏发送：
+**客户端同时支持两条通道**（`PrinterConnection` 接口 + 双实现）：
 
 ```
-图片光栅数据（可能几 KB）
-  → 切成 32 字节的小包
-  → 每包之间等 80ms（给透传芯片消化的时间）
-  → 一口气快速发会丢包，打印出来就是残缺的乱码
+PrinterConnection（接口）
+ ├── BlePrinterConnection  # BLE 透传：FF02 写 / FF01 通知
+ └── SppPrinterConnection  # 经典蓝牙：RFCOMM socket + daemon 读线程
 ```
 
-这是整个项目踩过最深的坑之一：**发送节奏决定了打印质量**。
+连接分派（`PrinterHolder.connect`）：
+- **手动指定**：BLE / 经典蓝牙，界面可选
+- **AUTO 自动探测**：先连 BLE → 用状态查询（`10 FF 40`）验证通道是否"活着"——
+  空壳机器的特征就是"GATT 能连、命令无人消费"（查询 1.5s 超时返回 null）→
+  断开自动回退 SPP。UI 侧连接对话框实时显示阶段文案 + 进度条
+  （AUTO 最坏约 40 秒：BLE 30s + SPP 17s 预算，典型 3~8 秒）
+
+发送节奏（踩过最深的坑之一：**节奏决定打印质量**）：
+- BLE：32 字节/包 + 80ms 间隔（透传芯片缓冲小，快速写会丢包 → 光栅残缺乱码）
+- SPP：RFCOMM 无 MTU 限制，1024 字节/块 + 1ms（照搬 HarmonyOS 参考实现）
 
 ---
 
@@ -90,9 +99,21 @@ BLE 是分包传输的，**单包上限很小**（默认 20 字节，我们实�
   → 等比缩放到 384 点宽
   → [可选] 一键增强（直方图拉伸去灰雾 + Sauvola 自适应二值化，拍试卷神器）
   → [可选] 抖动（Floyd-Steinberg / Atkinson，让照片有层次而不是一片黑）
+  → 二值化阈值可调（黑白化阶段调"哪些算黑"，与打印浓度"黑得多黑"独立叠加）
   → 二值化：每行 48 字节，MSB first，置 1 = 黑
   → ★ 行合并减半（每 2 行 OR 合并成 1 行）
   → 按 m=2 模式（双倍高）发给打印机
+```
+
+**描边模式**（独立管线，不经过灰度/对比度，2026-08-11 移植自 xyprt）：
+```
+Bitmap → argb 数组 + 透明度掩码（alpha≥128 视为实体像素）
+  → Canny.detect（高斯模糊 → Sobel 平方幅度 → 方向量化 → NMS
+     → 自适应双阈值（99 百分位 × 灵敏度指数公式）→ 8 邻域滞后连接）
+  或 Outline.trace（墨水对比度边缘，只记"比邻居更黑"的暗侧）
+  → [可选] 平滑（prune 剪毛刺 + despeckle 去小连通块）
+  → thicken 加粗（线宽 1~3）
+  → [可选] 反白 → 打包 → m=2 打印
 ```
 
 **为什么图片要"行合并 + 双倍高"这套组合拳？**——这是打黑方案定稿的过程：
@@ -142,9 +163,12 @@ STOP（复位）→ ENABLE（使能）→ 浓度 → 唤醒 → ESC@（解析器
 | 打印前体检 | 现查状态字节：开盖/缺纸/过热 → 拦截打印并提示原因 |
 | 打印中暂停轮询 | 防止查询字节混入打印数据流 |
 | 全链路 try-catch | 蓝牙任何一步异常 → 显示错误文案而不是 App 闪退 |
+| **OOM 单独捕获** | OutOfMemoryError 是 Error 不是 Exception，catch 不住——大文件/长图闪退根因；txt 流式读（5MB 上限）、OLE2 全量读（30MB 上限）、光栅/文本高度上限 30000 行 |
 | 事件日志落盘 | 连接/断开/打印/异常记到 `files/printlog.txt`，崩溃可复盘 |
 | 自动预览确认 | 所有打印先渲染实际效果图，确认才打，取消零耗纸 |
-| BLE 分包 + 节奏控制 | 32B/包 + 80ms 间隔，防丢包 |
+| 连接/解析进度反馈 | 连接进度条 + 阶段文案；文档解析转圈 + 已提取段/行计数，可取消 |
+| 文档解析竞态防护 | 新任务取消旧协程（大文件晚完成会覆盖新结果），CancellationException 不吞 |
+| BLE 分包 + 节奏控制 | 32B/包 + 80ms 间隔，防丢包；SPP 1024B/块 + 1ms |
 
 ---
 
@@ -152,30 +176,41 @@ STOP（复位）→ ENABLE（使能）→ 浓度 → 唤醒 → ESC@（解析器
 
 ```
 android/app/src/main/java/com/qring/print/
-├── BlePrinterConnection.kt   # 蓝牙心脏：连接/分包发送/查询/打印时序/ACK 等待
+├── PrinterConnection.kt      # 连接通道抽象接口（双通道统一入口）
+├── BlePrinterConnection.kt   # BLE 透传通道：FF02 写/FF01 通知/TRANSPORT_LE/分包节奏
+├── SppPrinterConnection.kt   # 经典蓝牙通道：RFCOMM + daemon 读线程 + 1024B 分包
+├── PrinterHolder.kt          # 双实例 + AUTO 探测分派（空壳验证回退）
 ├── QringProtocol.kt          # 协议字典：所有指令字节、状态位解析、光栅头构造
 ├── RasterEncoder.kt          # 光栅编码：Bitmap→48字节/行、行合并、预览渲染、多图拼接
 ├── Dither.kt                 # 抖动：无 / Floyd-Steinberg / Atkinson
+├── Canny.kt / Outline.kt     # 描边：Canny 边缘检测 / LINES 墨水对比度 + 加粗
+├── Morphology.kt / Contrast.kt  # 形态学去噪 / 对比度膝形曲线
 ├── ImageEnhancer.kt          # 图片增强：直方图拉伸+Sauvola 二值化、消除笔、自动裁白边
+├── PdfPrintRenderer.kt       # PDF → 384px 位图（系统 PdfRenderer 逐页+裁白边+拼接）
+├── DocxTextExtractor.kt      # Word docx 纯文本（zip + XmlPullParser 流式）
+├── XlsxTextExtractor.kt      # Excel xlsx 表格文本（sharedStrings + sheet1）
+├── LegacyDocExtractor.kt     # 老格式 doc/xls（OLE2 复合文档解析）
 ├── TemplateBuilder.kt        # 错题卡模板（含手写区版式）
 ├── TemplateLibrary.kt        # 课程表/单词表/每日计划模板
 ├── SelfTest.kt               # 打印测试页（浓度线/线条/灰阶渐变/文字）
-├── Design.kt                 # UI 设计系统：M3 配色/圆角/按钮/分段控件/Material Symbols 图标
+├── Design.kt                 # UI 设计系统：微信小程序风（灰底白卡/微信绿/8px 圆角/线性图标）
 ├── MainActivity.kt           # 主界面：三 Tab（首页/打印/我的）+ 全部交互
 ├── DebugActivity.kt          # 调试台：收发 hex 日志/原始命令（藏于"我的→关于"）
 ├── PrintLog.kt               # 日志：内存环形缓冲 + 关键事件落盘
-└── PrinterHolder.kt          # 全局单例连接（各界面共享一个蓝牙连接）
+└── HistoryStore.kt           # 打印历史（无损光栅重打 + 缩略图）
 ```
 
 数据流一句话总结：
-**UI 参数 → 位图排版 → 二值光栅 → 行合并 → 字节流 → BLE 分包 → 打印机加热出纸**
+**UI 参数 → 位图排版 → 二值光栅 → 行合并 → 字节流 → BLE/SPP 分包 → 打印机加热出纸**
 
 ---
 
 ## 8. 已知边界
 
-- 只验证过 **X1 机型**（BLE 透传通道）；同源 BY 系列理论兼容，未逐一验证
+- 验证过 **X1 机型两个通道**（本机 BLE 透传版 + 模拟 SPP 空壳验证）；同源 BY 系列理论兼容，未逐一验证
+- **SPP 版固件未真机验证**（手上只有 BLE 透传版）——AUTO 回退路径已按协议实现，等经典版机器实测
 - 浓度范围 X1 是 0~2（其他机型可能不同，如 Windows 版提到 0~7）
+- 老格式 .doc/.xls 提取是简化实现（.doc 复杂分片/文本框不提取；.xls 只取字符串表不还原行列），复杂文档建议转存 docx/xlsx
 - 打印头电流限制导致全黑大块显色偏淡是硬件特性，非软件可完全修复
 - 官方 App 生态已死，本客户端是社区替代方案，与学科网无关联
 
