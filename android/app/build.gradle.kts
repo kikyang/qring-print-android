@@ -11,8 +11,8 @@ android {
         applicationId = "com.qring.print"
         minSdk = 33          // Android 13+：BLE 新 API（旧 API 在 SDK34 编译时 HIDDEN）
         targetSdk = 34
-        versionCode = 4
-        versionName = "0.4.0"
+        versionCode = 5
+        versionName = "0.4.1"
     }
 
     // 正式签名（2026-08-11 生成 release.jks；密码在 android/keystore-password.txt）。

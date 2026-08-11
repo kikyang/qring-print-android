@@ -18,7 +18,7 @@
 
 ## 下载 APK
 
-最新版见 [Releases](https://github.com/kikyang/qring-print-android/releases)（v0.4.0，5.3MB，需 Android 13+）。
+最新版见 [Releases](https://github.com/kikyang/qring-print-android/releases)（v0.4.1，5.3MB，需 Android 13+）。
 
 ## 界面预览
 

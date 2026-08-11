@@ -256,6 +256,8 @@ class MainActivity : Activity() {
                 save("outline_smooth.png", imagePreviewRaster(RasterEncoder.encodeOutline(testPhoto, OutlineMethod.CANNY, 88, 1, smooth = true)))
                 // PDF 参数对照（阈值 190 + 对比度 10，xyprt PDF 默认）
                 save("contrast_pdf.png", imagePreviewRaster(RasterEncoder.encode(testPhoto, DitherMode.NONE, 190, contrast = 10)))
+                // 口算题（2026-08-11 加）：混合类型 12 题渲染验证
+                save("math_mix.png", imagePreviewRaster(RasterEncoder.encode(MathWorksheet.build(MathWorksheet.Op.MIX, 12), DitherMode.NONE, RasterEncoder.THRESHOLD_TEXT)))
                 // 文档（2026-08-11 加）：合成 PDF/docx/xlsx 走完整提取/渲染链路
                 runCatching {
                     val pdfFile = java.io.File(filesDir, "test_selftest.pdf")
@@ -481,6 +483,7 @@ class MainActivity : Activity() {
             GridEntry("course", "课程表", { printTemplate { TemplateLibrary.courseTable() } }),
             GridEntry("word", "单词表", { printTemplate { TemplateLibrary.wordList() } }),
             GridEntry("plan", "每日计划", { printTemplate { TemplateLibrary.dailyPlan() } }),
+            GridEntry("math", "口算题", { showMathDialog() }),
             GridEntry("history", "打印历史", { startActivity(Intent(this@MainActivity, HistoryActivity::class.java)) }),
         )
         for (i in grid.indices step 2) {
@@ -685,9 +688,13 @@ class MainActivity : Activity() {
             addView(Design.sectionTitle("图片打印"))
             addView(Design.caption("多选图可拼接省纸；消除笔去批改痕迹；增强处理拍试卷"))
             addView(Design.row {
-                val pickBtn = Design.outlineButton("🖼 选择图片(可多选)")
+                val pickBtn = Design.outlineButton("🖼 选图")
+                val canvasBtn = Design.outlineButton("🖌 画布")
                 val clearBtn = Design.ghostButton("清除")
                 addView(pickBtn, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                addView(canvasBtn, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    marginStart = Design.dp(8)
+                })
                 addView(clearBtn, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
                     marginStart = Design.dp(8)
                 })
@@ -698,6 +705,8 @@ class MainActivity : Activity() {
                     }
                     startActivityForResult(intent, REQ_IMAGE)
                 }
+                // 画布涂鸦（2026-08-11 借鉴 lztttt，并入图片通道）
+                canvasBtn.setOnClickListener { showCanvasDialog() }
                 clearBtn.setOnClickListener {
                     selectedImages.clear()
                     imagePreview.setImageDrawable(null)
@@ -2202,6 +2211,105 @@ class MainActivity : Activity() {
                 imageStatus.text = "模板异常：${e.javaClass.simpleName} ${e.message}"
             }
         }
+    }
+
+    /** 画布涂鸦（2026-08-11 借鉴 lztttt，并入图片通道：完成即加入 selectedImages） */
+    private fun showCanvasDialog() {
+        val canvasView = DrawCanvasView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, Design.dp(380))
+        }
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(Design.dp(8), Design.dp(4), Design.dp(8), Design.dp(4))
+            addView(canvasView)
+            addView(Design.row {
+                val clearBtn = Design.ghostButton("清空")
+                val undoBtn = Design.ghostButton("撤销")
+                addView(clearBtn, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                addView(undoBtn, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    marginStart = Design.dp(8)
+                })
+                clearBtn.setOnClickListener { canvasView.clear() }
+                undoBtn.setOnClickListener { canvasView.undo() }
+            }.also {
+                it.layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                    topMargin = Design.dp(8)
+                }
+            })
+        }
+        AlertDialog.Builder(this)
+            .setTitle("🖌 画布涂鸦")
+            .setView(content)
+            .setPositiveButton("✅ 加入图片", null)
+            .setNegativeButton("取消", null)
+            .create().apply {
+                show()
+                getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                    val bmp = canvasView.toBitmap()
+                    selectedImages.add(bmp)
+                    dismiss()
+                    updateThumbnail()
+                    imageStatus.text = "已加入画布涂鸦（共 ${selectedImages.size} 张图）"
+                }
+            }
+    }
+
+    /** 口算题：类型 + 题数 → 生成 → 预览 → 打印（2026-08-11 加，与课程表等模板同组） */
+    private fun showMathDialog() {
+        val types = MathWorksheet.Op.entries
+        val typeGroup = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL }
+        types.forEachIndexed { i, op ->
+            val rb = RadioButton(this).apply {
+                text = op.label
+                textSize = 14f
+                id = View.generateViewId()
+                isChecked = i == 0
+                setPadding(Design.dp(8), Design.dp(4), 0, Design.dp(4))
+            }
+            typeGroup.addView(rb)
+        }
+        val countGroup = RadioGroup(this).apply { orientation = RadioGroup.HORIZONTAL }
+        listOf(6, 12, 18).forEachIndexed { i, n ->
+            val rb = RadioButton(this).apply {
+                text = "$n 题"
+                textSize = 14f
+                id = View.generateViewId()
+                tag = n
+                isChecked = i == 1
+                setPadding(Design.dp(8), Design.dp(4), Design.dp(8), Design.dp(4))
+            }
+            countGroup.addView(rb)
+        }
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(Design.dp(8), Design.dp(4), Design.dp(8), Design.dp(4))
+            addView(TextView(this@MainActivity).apply {
+                text = "类型"; textSize = 13f; setTextColor(Design.TEXT_SUB)
+            })
+            addView(typeGroup)
+            addView(TextView(this@MainActivity).apply {
+                text = "题数"; textSize = 13f; setTextColor(Design.TEXT_SUB)
+                setPadding(0, Design.dp(8), 0, 0)
+            })
+            addView(countGroup)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("🖊 口算题")
+            .setView(content)
+            .setPositiveButton("生成", null)
+            .setNegativeButton("取消", null)
+            .create().apply {
+                show()
+                getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                    val op = types[typeGroup.checkedRadioButtonId.takeIf { it != -1 }?.let {
+                        typeGroup.indexOfChild(typeGroup.findViewById(it))
+                    } ?: 0]
+                    val count = (countGroup.checkedRadioButtonId.takeIf { it != -1 }
+                        ?.let { countGroup.findViewById<RadioButton>(it)?.tag as? Int }) ?: 12
+                    dismiss()
+                    printTemplate { MathWorksheet.build(op, count) }
+                }
+            }
     }
 
     /** 自检页（藏在我的页）：Floyd 抖动渲染灰阶渐变 */

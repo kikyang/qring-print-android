@@ -11,9 +11,10 @@ import kotlinx.coroutines.delay
  * MainActivity 与 DebugActivity 共用同一连接，避免各自建 socket。
  * scope 为应用级，不随 Activity 销毁。
  *
- * 双通道（2026-08-11 加）：X1 存在多个软件版本——
- * - [BlePrinterConnection]：BLE 透传（FF02 写 / FF01 通知），本机 X1 实测路径
- * - [SppPrinterConnection]：经典蓝牙 SPP，兼容经典版固件（透传版上 SPP 是空壳）
+ * 双通道（2026-08-11 加，实测修正）：X1 两个通道都可用——
+ * - [BlePrinterConnection]：BLE 透传（FF02 写 / FF01 通知），查询/打印全功能
+ * - [SppPrinterConnection]：经典蓝牙 SPP，**单向**：能打印、查询无响应
+ *   （2026-08-11 用户真机验证：SPP 打印正常出纸，型号显示 "?" 属预期）
  * 连接前必须 init(context) 一次（ApplicationContext）。
  */
 object PrinterHolder {
@@ -57,10 +58,10 @@ object PrinterHolder {
      * 按 Settings.connectionMode 分派连接：
      * - BLE：只走 BLE 透传
      * - SPP：只走经典蓝牙
-     * - AUTO（默认）：BLE 优先，连接成功后用 queryStatus 做空壳验证——
-     *   空壳机器特征就是「GATT 能连、命令无人消费」，查询超时返回 null，
-     *   此时断开重走 SPP。SPP 成功但查询仍 null 则保持 SPP 连接
-     *   （这类机器只能用 SPP 硬打，状态栏型号显示 "?" 属预期）。
+     * - AUTO（默认）：BLE 优先，连接成功后用 queryStatus 验证通道是否"活着"——
+     *   BLE 透传版查询有响应；SPP 单向版 GATT 无数据消费（查询超时返回 null），
+     *   此时断开重走 SPP。SPP 能连上（单向，能打印查询无响应）则保持 SPP 连接，
+     *   状态栏型号显示 "?" 属预期。
      *
      * 超时预算（全部协程内 await，UI 不卡）：BLE 阶段最坏 ≈30s（含未配对
      * 时 createBond 20s 超时+重试）；SPP 阶段 ≈17s（cancelDiscovery +
@@ -76,19 +77,25 @@ object PrinterHolder {
             ConnectionMode.BLE -> {
                 onPhase("正在连接（BLE 透传）…", 10)
                 val ok = ble.connect(device)
-                if (ok) onPhase("连接成功（BLE 透传）", 100)
+                if (ok) {
+                    active = ble
+                    onPhase("连接成功（BLE 透传）", 100)
+                }
                 return ok
             }
             ConnectionMode.SPP -> {
                 onPhase("正在连接（经典蓝牙 SPP）…", 10)
                 val ok = spp.connect(device)
-                if (ok) onPhase("连接成功（经典蓝牙）", 100)
+                if (ok) {
+                    active = spp
+                    onPhase("连接成功（经典蓝牙）", 100)
+                }
                 return ok
             }
             ConnectionMode.AUTO -> {
                 onPhase("正在连接（BLE 透传）…", 10)
                 if (ble.connect(device)) {
-                    // 空壳验证：BLE 透传版查询有响应；SPP-only 固件的 GATT 无数据消费
+                    // 通道验证：BLE 透传版查询有响应；SPP 单向版的 GATT 无数据消费
                     onPhase("BLE 已连上，验证通道…", 35)
                     val alive = runCatching {
                         withContextTimeoutSafe { ble.queryStatus() }
@@ -101,7 +108,7 @@ object PrinterHolder {
                     onPhase("BLE 无响应，改用经典蓝牙…", 55)
                     ble.disconnect()
                     // 打日志便于排查是哪种机器
-                    PrintLog.event("AUTO 回退：BLE 空壳，改走 SPP")
+                    PrintLog.event("AUTO 回退：BLE 查询无响应，改走 SPP")
                 } else {
                     onPhase("BLE 连接失败，改用经典蓝牙…", 55)
                 }

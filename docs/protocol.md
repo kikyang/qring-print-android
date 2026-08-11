@@ -7,6 +7,7 @@
 - 品牌：错题小印（Qring / BeePrt BY 系列）58mm 蓝牙热敏打印机
 - 打印头：384 点宽（203dpi），每行 48 字节，无补位
 - 蓝牙：**经典蓝牙 SPP + BLE 双模**（SPP 已验证；BLE 通道待开发验证）
+  - 2026-08-11 修正：X1 SPP 为**单向**（能打印、查询无响应，真机验证）；BLE 透传全功能
 - SPP UUID：`00001101-0000-1000-8000-00805f9b34fb`（标准 SPP RFCOMM），secure 配对
 - 设备名带 `Qring` 前缀（PrinterDiscovery 默认过滤规则）
 

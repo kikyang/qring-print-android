@@ -18,9 +18,11 @@ import kotlinx.coroutines.withTimeoutOrNull
 /**
  * 错题小印 X1 蓝牙连接管理 —— **经典蓝牙 SPP 通道**（RFCOMM，标准串口 UUID）。
  *
- * 2026-08-11 加：X1 存在多个软件版本，透传版控制通道是 BLE GATT（[BlePrinterConnection]），
- * 经典版走 SPP。本类兼容 SPP 固件；在透传版 X1 上 RFCOMM 能连上但数据无人消费
- * （空壳），查询会超时——AUTO 模式由 [PrinterHolder.connect] 的 queryStatus 验证回退。
+ * 2026-08-11 实测修正：X1 的 SPP 通道**可以打印**（用户真机验证），
+ * 但**查询无响应**（10 FF 40/70 等发出去不回复）——是**单向通道**（只收不发），
+ * 不是空壳。之前 2026-08-10 电脑端"SPP 空壳"结论系只测了查询、误判。
+ * 表现：SPP 连接成功 → 型号/固件显示 "?"（查询无响应）→ 打印正常出纸。
+ * preflightCheck 查询失败返回 null 放行，正好适配单向通道。
  *
  * 与 BLE 版的差异只在收发：
  * - 连接：createRfcommSocketToServiceRecord（失败换 insecure 再试），connect 前必须 cancelDiscovery
@@ -107,6 +109,11 @@ class SppPrinterConnection(
 
     override suspend fun connect(device: BluetoothDevice): Boolean {
         disconnect()
+        // 经典 RFCOMM 要求设备已配对（2026-08-11 借鉴 lztttt/QrintPrint-Android：
+        // 他从已配对列表连接；我们从设备列表点连接，未配对设备直接 connect 会失败）
+        if (device.bondState != BluetoothDevice.BOND_BONDED) {
+            if (!awaitBond(device)) return false
+        }
         // 必须：经典蓝牙发现进行中 connect RFCOMM 必失败（系统级坑）
         runCatching { BluetoothAdapter.getDefaultAdapter()?.cancelDiscovery() }
 
@@ -167,6 +174,41 @@ class SppPrinterConnection(
             firmwareVersion = ""
             btVersion = ""
             btMac = ""
+        }
+    }
+
+    /** 发起经典蓝牙配对并等待完成（BOND_BONDED）；用户取消返回 false */
+    @SuppressLint("MissingPermission")
+    private suspend fun awaitBond(device: BluetoothDevice): Boolean = withContext(Dispatchers.IO) {
+        val deferred = kotlinx.coroutines.CompletableDeferred<Boolean>()
+        val receiver = object : android.content.BroadcastReceiver() {
+            override fun onReceive(context: android.content.Context?, intent: android.content.Intent?) {
+                val dev = intent?.getParcelableExtra<BluetoothDevice>(BluetoothDevice.EXTRA_DEVICE)
+                    ?: return
+                if (dev.address != device.address) return
+                when (intent.getIntExtra(BluetoothDevice.EXTRA_BOND_STATE, -1)) {
+                    BluetoothDevice.BOND_BONDED -> deferred.complete(true)
+                    BluetoothDevice.BOND_NONE -> deferred.complete(false)
+                }
+            }
+        }
+        appContext.registerReceiver(
+            receiver,
+            android.content.IntentFilter(BluetoothDevice.ACTION_BOND_STATE_CHANGED),
+            androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED
+        )
+        try {
+            val started = runCatching { device.createBond() }.getOrDefault(false)
+            if (!started) {
+                appContext.unregisterReceiver(receiver)
+                return@withContext false
+            }
+            val ok = withTimeoutOrNull(20_000L) { deferred.await() } ?: false
+            appContext.unregisterReceiver(receiver)
+            ok
+        } catch (e: Exception) {
+            runCatching { appContext.unregisterReceiver(receiver) }
+            false
         }
     }
 
@@ -408,7 +450,10 @@ class SppPrinterConnection(
             sendAll(cmdFeed(fa))
             send(CMD_STOP)
 
-            return waitAck(ACK_TIMEOUT_MS)
+            // ACK 超时动态计算（2026-08-11 借鉴 lztttt/QrintPrint-Android）：
+            // 基础 8s + 每行 5ms，上限 30s——打印失败不用傻等固定 120s
+            val ackTimeout = minOf(30_000L, 8_000L + h * 5L)
+            return waitAck(ackTimeout)
         } catch (e: Exception) {
             // 任何底层异常转为打印失败结果，绝不崩协程
             PrintLog.event("SPP 打印异常: ${e.javaClass.simpleName}: ${e.message}")

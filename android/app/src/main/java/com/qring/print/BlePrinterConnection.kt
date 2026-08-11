@@ -28,7 +28,8 @@ import java.util.UUID
  * 错题小印 X1 蓝牙连接管理 —— **BLE 透传通道**（写 FF02 / 通知 FF01）。
  *
  * 2026-08-10 实物联调结论（X1 实测）：
- * - 控制通道是 BLE 透传（ISSC 芯片，FF00 服务），SPP 是空壳（RFCOMM 能连但数据无人消费）
+ * - 控制通道是 BLE 透传（ISSC 芯片，FF00 服务）；
+ *   SPP 非空壳（2026-08-11 修正：能打印、查询无响应，见 SppPrinterConnection）
  * - 打印流程：STOP复位 → ENABLE → 浓度 → WAKEUP → ESC@ → 前走纸 → 光栅 → 后走纸 → STOP → 等 ACK
  *   **不要 ENABLE2（1F B2 10）**：X1 固件不识别，会被文本引擎渲染成「固」字乱码
  * - 光栅用 GS v 0 **m=0**（m=1 对含 0x00 的数据有 bug）
@@ -522,7 +523,10 @@ class BlePrinterConnection(
             sendAll(cmdFeed(fa))
             send(CMD_STOP)
 
-            return waitAck(ACK_TIMEOUT_MS)
+            // ACK 超时动态计算（2026-08-11 借鉴 lztttt/QrintPrint-Android）：
+            // 基础 8s + 每行 5ms，上限 30s——打印失败不用傻等固定 120s
+            val ackTimeout = minOf(30_000L, 8_000L + h * 5L)
+            return waitAck(ackTimeout)
         } catch (e: Exception) {
             // 2026-08-11 自检页"一点就断连"根因：协程无 try-catch，BLE 异常直接崩 App。
             // 任何底层异常转为打印失败结果，绝不崩协程。
