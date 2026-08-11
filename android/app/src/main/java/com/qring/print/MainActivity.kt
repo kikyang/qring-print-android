@@ -266,14 +266,15 @@ class MainActivity : Activity() {
             setPadding(Design.dp(4), Design.dp(6), Design.dp(4), Design.dp(6))
             setBackgroundColor(Design.SURFACE_CONTAINER_LOW)
         }
-        fun tabItem(iconCode: String, label: String): LinearLayout {
+        fun tabItem(iconName: String, label: String): LinearLayout {
             val t = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
                 setPadding(0, Design.dp(4), 0, Design.dp(4))
                 isClickable = true
             }
-            t.addView(Design.Icons.textViewFilled(iconCode, 26, Design.TEXT_SUB))
+            // AI 生成统一风格位图图标（24dp）
+            t.addView(Design.Icons.imageView(iconName, 24))
             t.addView(TextView(this).apply {
                 text = label
                 textSize = 10.5f
@@ -284,9 +285,9 @@ class MainActivity : Activity() {
             })
             return t
         }
-        tabHome = tabItem(Design.Icons.HOME, "首页")
-        tabPrint = tabItem(Design.Icons.PRINT, "打印")
-        tabMine = tabItem(Design.Icons.PERSON, "我的")
+        tabHome = tabItem("home", "首页")
+        tabPrint = tabItem("print", "打印")
+        tabMine = tabItem("person", "我的")
         tabHome.setOnClickListener { switchPage(PAGE_HOME) }
         tabPrint.setOnClickListener { switchPage(PAGE_PRINT) }
         tabMine.setOnClickListener { switchPage(PAGE_MINE) }
@@ -371,28 +372,26 @@ class MainActivity : Activity() {
             addView(statusText)
         })
 
-        // 功能宫格：2 列 × 3 行，Material Symbols 图标 + 彩色图标底（M3 风格入口）
+        // 功能宫格：2 列 × 4 行，AI 生成统一风格位图图标（2026-08-11 用户要求）
         page.addView(Design.sectionTitle("常用功能"))
-        data class GridEntry(val icon: String, val iconColor: Int, val iconBg: Int, val label: String, val action: () -> Unit)
-        // 图标底色（浅色模式浅底深字；深色模式深底浅字）
-        val dark = Design.isDark
+        data class GridEntry(val icon: String, val label: String, val action: () -> Unit)
         val grid = arrayOf(
-            GridEntry(Design.Icons.EDIT_NOTE, if (dark) 0xFFA5D6A7.toInt() else 0xFF1B5E20.toInt(), if (dark) 0xFF1D3A20.toInt() else 0xFFE8F5E9.toInt(), "文字打印", { switchPage(PAGE_PRINT); subTabText.isChecked = true; input.requestFocus() }),
-            GridEntry(Design.Icons.IMAGE, if (dark) 0xFF90CAF9.toInt() else 0xFF0D47A1.toInt(), if (dark) 0xFF0D2B45.toInt() else 0xFFE3F2FD.toInt(), "图片打印", { switchPage(PAGE_PRINT); subTabImage.isChecked = true }),
-            GridEntry(Design.Icons.MENU_BOOK, if (dark) 0xFFFFCC80.toInt() else 0xFFE65100.toInt(), if (dark) 0xFF3D2A10.toInt() else 0xFFFFF3E0.toInt(), "错题卡", { switchPage(PAGE_PRINT); subTabCard.isChecked = true }),
-            GridEntry(Design.Icons.LIST_ALT, if (dark) 0xFF90A4AE.toInt() else 0xFF37474F.toInt(), if (dark) 0xFF1E2A30.toInt() else 0xFFECEFF1.toInt(), "条码打印", { switchPage(PAGE_PRINT); subTabBarcode.isChecked = true }),
-            GridEntry(Design.Icons.CALENDAR, if (dark) 0xFFCE93D8.toInt() else 0xFF6A1B9A.toInt(), if (dark) 0xFF2D1B3A.toInt() else 0xFFF3E5F5.toInt(), "课程表", { printTemplate { TemplateLibrary.courseTable() } }),
-            GridEntry(Design.Icons.CHECKLIST, if (dark) 0xFF80CBC4.toInt() else 0xFF00695C.toInt(), if (dark) 0xFF0F2E2B.toInt() else 0xFFE0F7FA.toInt(), "单词表", { printTemplate { TemplateLibrary.wordList() } }),
-            GridEntry(Design.Icons.SCHEDULE, if (dark) 0xFFF48FB1.toInt() else 0xFFAD1457.toInt(), if (dark) 0xFF3A1B2A.toInt() else 0xFFFCE4EC.toInt(), "每日计划", { printTemplate { TemplateLibrary.dailyPlan() } }),
-            GridEntry(Design.Icons.HISTORY, if (dark) 0xFFBCAAA4.toInt() else 0xFF4E342E.toInt(), if (dark) 0xFF2B1F1C.toInt() else 0xFFEFE9E7.toInt(), "打印历史", { startActivity(Intent(this@MainActivity, HistoryActivity::class.java)) }),
+            GridEntry("text", "文字打印", { switchPage(PAGE_PRINT); subTabText.isChecked = true; input.requestFocus() }),
+            GridEntry("image", "图片打印", { switchPage(PAGE_PRINT); subTabImage.isChecked = true }),
+            GridEntry("card", "错题卡", { switchPage(PAGE_PRINT); subTabCard.isChecked = true }),
+            GridEntry("barcode", "条码打印", { switchPage(PAGE_PRINT); subTabBarcode.isChecked = true }),
+            GridEntry("course", "课程表", { printTemplate { TemplateLibrary.courseTable() } }),
+            GridEntry("word", "单词表", { printTemplate { TemplateLibrary.wordList() } }),
+            GridEntry("plan", "每日计划", { printTemplate { TemplateLibrary.dailyPlan() } }),
+            GridEntry("history", "打印历史", { startActivity(Intent(this@MainActivity, HistoryActivity::class.java)) }),
         )
         for (i in grid.indices step 2) {
             val g1 = grid[i]
             val g2 = grid[i + 1]
             page.addView(Design.row {
-                addView(gridItem(g1.icon, g1.iconColor, g1.iconBg, g1.label, g1.action),
+                addView(gridItem(g1.icon, g1.label, g1.action),
                     LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-                addView(gridItem(g2.icon, g2.iconColor, g2.iconBg, g2.label, g2.action),
+                addView(gridItem(g2.icon, g2.label, g2.action),
                     LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
                         marginStart = Design.dp(10)
                     })
@@ -408,12 +407,12 @@ class MainActivity : Activity() {
         return scroll
     }
 
-    /** 宫格项：大号填充图标（彩色圆底）+ 文字居中在图标正下方（M3 入口风格） */
-    private fun gridItem(icon: String, iconColor: Int, iconBg: Int, label: String, action: () -> Unit): LinearLayout {
+    /** 宫格项：AI 生成统一风格图标（白底彩图）+ 文字居中在图标正下方 */
+    private fun gridItem(iconName: String, label: String, action: () -> Unit): LinearLayout {
         val item = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setPadding(Design.dp(8), Design.dp(18), Design.dp(8), Design.dp(16))
+            setPadding(Design.dp(8), Design.dp(16), Design.dp(8), Design.dp(14))
             background = Design.pressable(
                 Design.rounded(Design.SURFACE_CONTAINER_LOW, Design.RADIUS_SM),
                 Design.rounded(Design.PRIMARY_CONTAINER, Design.RADIUS_SM),
@@ -421,14 +420,14 @@ class MainActivity : Activity() {
             isClickable = true
             setOnClickListener { action() }
         }
-        // 彩色大圆底 + Sharp 填充图标（38sp，醒目精致）
+        // 白底圆角容器 + 位图图标（60dp，统一风格）
         val iconWrap = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setPadding(Design.dp(16), Design.dp(16), Design.dp(16), Design.dp(16))
-            background = Design.rounded(iconBg, Design.dp(36).toFloat())
+            setPadding(Design.dp(10), Design.dp(10), Design.dp(10), Design.dp(10))
+            background = Design.rounded(0xFFFFFFFF.toInt(), Design.dp(18).toFloat())
         }
-        iconWrap.addView(Design.Icons.textViewFilled(icon, 38, iconColor))
+        iconWrap.addView(Design.Icons.imageView(iconName, 64))
         item.addView(iconWrap)
         // 文字居中在图标正下方
         item.addView(TextView(this).apply {
@@ -454,7 +453,7 @@ class MainActivity : Activity() {
             setPadding(Design.dp(4), 0, Design.dp(4), 0)
             background = Design.rounded(0xFFEDF0F7.toInt(), Design.RADIUS_SM)
         }
-        fun subTab(text: String): RadioButton = RadioButton(this).apply {
+        fun subTab(text: String, iconName: String): RadioButton = RadioButton(this).apply {
             this.text = text
             textSize = 13.5f
             gravity = Gravity.CENTER
@@ -462,6 +461,12 @@ class MainActivity : Activity() {
             minHeight = Design.dp(40)
             setButtonDrawable(android.R.color.transparent)
             id = View.generateViewId()
+            // 左图标（AI 统一风格位图，20dp）
+            Design.Icons.bitmap(iconName)?.let { bmp ->
+                setCompoundDrawablesWithIntrinsicBounds(
+                    android.graphics.drawable.BitmapDrawable(resources, bmp), null, null, null)
+                compoundDrawablePadding = Design.dp(4)
+            }
             // checked 态持续高亮（浅绿底），未选容器色——用户能明确当前所处功能页
             background = android.graphics.drawable.StateListDrawable().apply {
                 addState(intArrayOf(android.R.attr.state_checked), Design.rounded(Design.PRIMARY_CONTAINER, Design.RADIUS_SM))
@@ -469,10 +474,10 @@ class MainActivity : Activity() {
                 addState(intArrayOf(), Design.rounded(Design.SURFACE_CONTAINER, Design.RADIUS_SM))
             }
         }
-        subTabText = subTab("📝 文字")
-        subTabImage = subTab("🖼 图片")
-        subTabCard = subTab("🎴 错题卡")
-        subTabBarcode = subTab("🏷 条码")
+        subTabText = subTab("文字", "text")
+        subTabImage = subTab("图片", "image")
+        subTabCard = subTab("错题卡", "card")
+        subTabBarcode = subTab("条码", "barcode")
         subGroup.addView(subTabText, RadioGroup.LayoutParams(0, RadioGroup.LayoutParams.WRAP_CONTENT, 1f))
         subGroup.addView(subTabImage, RadioGroup.LayoutParams(0, RadioGroup.LayoutParams.WRAP_CONTENT, 1f))
         subGroup.addView(subTabCard, RadioGroup.LayoutParams(0, RadioGroup.LayoutParams.WRAP_CONTENT, 1f))

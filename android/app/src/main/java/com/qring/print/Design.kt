@@ -7,6 +7,7 @@ import android.graphics.drawable.StateListDrawable
 import android.view.Gravity
 import android.widget.Button
 import android.widget.EditText
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.RadioButton
 import android.widget.RadioGroup
@@ -320,6 +321,32 @@ object Design {
             textSize = size.toFloat()
             setTextColor(color)
             gravity = Gravity.CENTER
+        }
+
+        // ── AI 生成统一风格位图图标（assets/icons/，2026-08-11）──
+        private val bitmapCache = HashMap<String, android.graphics.Bitmap?>()
+
+        /** 加载位图图标（assets/icons/<name>.png，缓存） */
+        fun bitmap(name: String): android.graphics.Bitmap? {
+            if (bitmapCache.containsKey(name)) return bitmapCache[name]
+            val bmp = runCatching {
+                val `is` = Utils.appContext().assets.open("icons/$name.png")
+                val b = android.graphics.BitmapFactory.decodeStream(`is`)
+                `is`.close()
+                b
+            }.getOrNull()
+            bitmapCache[name] = bmp
+            return bmp
+        }
+
+        /** 位图图标 ImageView（指定尺寸 dp，居中显示） */
+        fun imageView(name: String, sizeDp: Int): ImageView = ImageView(Utils.appContext()).apply {
+            val bmp = bitmap(name)
+            if (bmp != null) {
+                setImageBitmap(bmp)
+                scaleType = ImageView.ScaleType.FIT_CENTER
+            }
+            layoutParams = android.view.ViewGroup.LayoutParams(dp(sizeDp), dp(sizeDp))
         }
     }
 
