@@ -92,6 +92,14 @@ class BlePrinterConnection(
     @Volatile var firmwareVersion: String = ""
         private set
 
+    /** 蓝牙版本（10 FF 30 10，X1 可能不支持，空串则隐藏） */
+    @Volatile var btVersion: String = ""
+        private set
+
+    /** 蓝牙 MAC（10 FF 30 12，可能不支持） */
+    @Volatile var btMac: String = ""
+        private set
+
     private var gatt: BluetoothGatt? = null
     private var writeChar: BluetoothGattCharacteristic? = null
     private var notifyChar: BluetoothGattCharacteristic? = null
@@ -273,6 +281,8 @@ class BlePrinterConnection(
             batteryPercent = null
             deviceModel = ""
             firmwareVersion = ""
+            btVersion = ""
+            btMac = ""
         }
     }
 
@@ -421,6 +431,9 @@ class BlePrinterConnection(
         }
         if (deviceModel.isEmpty()) deviceModel = queryString(CMD_MODEL)
         if (firmwareVersion.isEmpty()) firmwareVersion = queryString(CMD_FW_VERSION)
+        // 蓝牙版本/MAC（QrintPrint-Windows 的命令，X1 可能不支持——无响应则留空隐藏）
+        btVersion = queryString(CMD_BT_VERSION)
+        btMac = queryString(CMD_BT_MAC)
     }
 
     /**
@@ -456,6 +469,8 @@ class BlePrinterConnection(
         thickness: Int? = null,
         mode: Int = 0,
         halveRows: Boolean = false,
+        feedBefore: Int? = null,
+        feedAfter: Int? = null,
     ): PrintResult {
         if (!connected) return PrintResult(false, "打印机未连接")
         if (busy) return PrintResult(false, "上一个打印任务还没结束")
@@ -477,7 +492,10 @@ class BlePrinterConnection(
             // 无预热条：2026-08-11 用户实测排除——文字不打预热本来就黑；
             // 全黑块打不打预热都不黑（固件电流限制，strobe 固定短）。
             // 预热条只会白费纸 + 顶部多一条怪黑条（光栅头紧跟 ESC@ 被文本引擎吞字节）
-            sendAll(cmdFeed(FEED_BEFORE))
+            // 进纸/出纸可调（2026-08-11 加，Settings 持久化，参考 QrintPrint-Windows）
+            val fb = (feedBefore ?: FEED_BEFORE).coerceIn(0, 255)
+            val fa = (feedAfter ?: FEED_AFTER).coerceIn(0, 255)
+            sendAll(cmdFeed(fb))
 
             // 图片通道：先行合并减半（2 行 OR 1 行），再用 m=2 双打
             val data = if (halveRows) RasterEncoder.halveRows(raster) else raster
@@ -498,7 +516,7 @@ class BlePrinterConnection(
                 delay(150)
             }
 
-            sendAll(cmdFeed(FEED_AFTER))
+            sendAll(cmdFeed(fa))
             send(CMD_STOP)
 
             return waitAck(ACK_TIMEOUT_MS)
@@ -577,3 +595,9 @@ val CMD_DEVICE_INFO = byteArrayOf(0x10, 0xFF.toByte(), 0x70)
 
 /** X1 固件版本查询：返回 "v3.38.21_AY" 这类 */
 val CMD_FW_X1 = byteArrayOf(0x10, 0xFF.toByte(), 0x31)
+
+/** 蓝牙版本（QrintPrint-Windows 命令，X1 待验证） */
+val CMD_BT_VERSION = byteArrayOf(0x10, 0xFF.toByte(), 0x30, 0x10)
+
+/** 蓝牙 MAC（QrintPrint-Windows 命令，X1 待验证） */
+val CMD_BT_MAC = byteArrayOf(0x10, 0xFF.toByte(), 0x30, 0x12)

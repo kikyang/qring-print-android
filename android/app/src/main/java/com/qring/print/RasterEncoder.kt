@@ -195,12 +195,14 @@ object RasterEncoder {
      * 文本 → 光栅：白底黑字，按宽度自动换行。
      * 文字固定走 NONE 模式 + 高阈值 212（笔画不被吃掉）。
      * @param bold 加粗（伪粗体，小字号下更实）
+     * @param align 对齐：0 左 / 1 中 / 2 右（2026-08-11 加，参考 QrintPrint-Windows）
      */
     fun encodeText(
         text: String,
         fontSizePx: Int = 48,
         lineSpacingPx: Int = 8,
         bold: Boolean = false,
+        align: Int = 0,
     ): RasterData {
         val padding = 8
         val width = WIDTH_DOTS - padding * 2
@@ -234,7 +236,12 @@ object RasterEncoder {
         canvas.drawColor(Color.WHITE)
         var y = padding.toFloat() - fm.top
         for (line in lines) {
-            canvas.drawText(line, padding.toFloat(), y, paint)
+            val x = when (align) {
+                1 -> padding + (width - paint.measureText(line)) / 2f   // 居中
+                2 -> padding + (width - paint.measureText(line))        // 右对齐
+                else -> padding.toFloat()                               // 左对齐
+            }
+            canvas.drawText(line, x, y, paint)
             y += lineHeight
         }
         return encode(bmp, DitherMode.NONE, THRESHOLD_TEXT)

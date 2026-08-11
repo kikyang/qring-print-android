@@ -48,4 +48,6 @@ android {
 dependencies {
     implementation("androidx.core:core-ktx:1.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+    // 条码/二维码生成（2026-08-11 加，参考 QrintPrint-Windows）
+    implementation("com.google.zxing:core:3.5.3")
 }

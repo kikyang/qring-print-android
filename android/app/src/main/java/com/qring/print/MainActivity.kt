@@ -15,6 +15,7 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.net.Uri
 import android.os.Build
+import android.text.Editable
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
@@ -30,6 +31,8 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /**
@@ -49,13 +52,26 @@ class MainActivity : Activity() {
     private lateinit var statusText: TextView
     private lateinit var statusBadge: TextView
     private lateinit var deviceArea: LinearLayout
+    /** 机器状态灯（仿 QrintPrint-Windows StatusLights 四灯 + 打印中）：灰=未知/绿=正常/红=异常 */
+    private val statusDots = HashMap<String, View>()
+    private val statusDotLabels = HashMap<String, TextView>()
+    private var statusRefreshJob: kotlinx.coroutines.Job? = null
     // 打印页二级切换
     private lateinit var subTabText: RadioButton
     private lateinit var subTabImage: RadioButton
     private lateinit var subTabCard: RadioButton
+    private lateinit var subTabBarcode: RadioButton
+    // 条码区
+    private lateinit var barcodeInput: EditText
+    private lateinit var barcodeHint: TextView
+    private lateinit var barcodePreview: ImageView
+    private lateinit var barcodeStatus: TextView
+    private var currentBarcodeType: BarcodeGenerator.BarcodeType = BarcodeGenerator.TYPES[0]
+    private val barcodeTypeButtons = HashMap<BarcodeGenerator.BarcodeType, android.widget.Button>()
     // 文字区
     private lateinit var input: EditText
     private lateinit var fontGroup: RadioGroup
+    private lateinit var alignGroup: RadioGroup
     private lateinit var boldCheck: CheckBox
     private lateinit var textPreview: ImageView
     private lateinit var textStatus: TextView
@@ -86,6 +102,7 @@ class MainActivity : Activity() {
     private lateinit var textContent: LinearLayout
     private lateinit var imageContent: LinearLayout
     private lateinit var cardContent: LinearLayout
+    private lateinit var barcodeContent: LinearLayout
     private lateinit var tabHome: LinearLayout
     private lateinit var tabPrint: LinearLayout
     private lateinit var tabMine: LinearLayout
@@ -188,6 +205,22 @@ class MainActivity : Activity() {
                 save("tpl_plan.png", imagePreviewRaster(RasterEncoder.encode(TemplateLibrary.dailyPlan(), DitherMode.NONE, RasterEncoder.THRESHOLD_TEXT)))
                 // 自检页
                 save("selftest.png", imagePreviewRaster(RasterEncoder.encode(SelfTest.build(), DitherMode.FLOYD_STEINBERG)))
+                // 条码：QR + Code128（校验各类型可用）
+                runCatching {
+                    save("barcode_qr.png", imagePreviewRaster(RasterEncoder.encode(
+                        BarcodeGenerator.encodeBitmap(BarcodeGenerator.TYPES[0], "https://example.com/test"),
+                        DitherMode.NONE, RasterEncoder.THRESHOLD_IMAGE)))
+                }
+                runCatching {
+                    save("barcode_code128.png", imagePreviewRaster(RasterEncoder.encode(
+                        BarcodeGenerator.encodeBitmap(BarcodeGenerator.TYPES[1], "ABC-123"),
+                        DitherMode.NONE, RasterEncoder.THRESHOLD_IMAGE)))
+                }
+                // 文字对齐三种（验证左/中/右）
+                listOf(0, 1, 2).forEach { align ->
+                    save("text_align_$align.png", RasterEncoder.rasterToPreviewBitmap(
+                        RasterEncoder.encodeText("对齐测试", fontSizePx = 48, align = align)))
+                }
 
                 // 页面快照（离线渲染 View 树成 PNG，验证布局/配色/图标，不受窗口遮挡影响）
                 fun snapshot(view: View, name: String) {
@@ -210,6 +243,8 @@ class MainActivity : Activity() {
                 snapshot(printPage, "page_print_image.png")
                 subTabCard.isChecked = true
                 snapshot(printPage, "page_print_card.png")
+                subTabBarcode.isChecked = true
+                snapshot(printPage, "page_print_barcode.png")
                 subTabText.isChecked = true
                 switchPage(PAGE_MINE)
                 snapshot(minePage, "page_mine.png")
@@ -289,7 +324,7 @@ class MainActivity : Activity() {
 
         page.addView(Design.header("🖨 错题小印打印"))
 
-        // 设备状态条
+        // 设备状态条（2026-08-11 增强：机器状态灯 + 电量，10s 轮询刷新）
         page.addView(Design.card {
             addView(Design.caption("设备状态"))
             addView(Design.row {
@@ -303,6 +338,29 @@ class MainActivity : Activity() {
                 val btn = Design.outlineButton("选择设备")
                 addView(btn)
                 btn.setOnClickListener { switchPage(PAGE_MINE) }
+            })
+            // 机器状态灯：电量/缺纸/开盖/过热/打印中 五灯（圆点+标签，灰=未知 绿=正常 红=异常 蓝=打印中）
+            addView(Design.row {
+                for ((key, name) in listOf(
+                    "battery" to "电量", "paper" to "缺纸",
+                    "cover" to "开盖", "thermal" to "过热", "printing" to "打印中"
+                )) {
+                    val dot = View(this@MainActivity).apply {
+                        background = Design.rounded(0xFFB4BACB.toInt(), Design.dp(12).toFloat())
+                    }
+                    val label = TextView(this@MainActivity).apply {
+                        text = name
+                        textSize = 12f
+                        setTextColor(Design.TEXT_SUB)
+                        setPadding(Design.dp(4), 0, Design.dp(10), 0)
+                    }
+                    statusDots[key] = dot
+                    statusDotLabels[key] = label
+                    addView(dot, LinearLayout.LayoutParams(Design.dp(12), Design.dp(12)))
+                    addView(label)
+                }
+            }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = Design.dp(6)
             })
             statusText = TextView(this@MainActivity).apply {
                 text = "点「选择设备」连接打印机，或直接开始打印"
@@ -412,28 +470,33 @@ class MainActivity : Activity() {
         subTabText = subTab("📝 文字")
         subTabImage = subTab("🖼 图片")
         subTabCard = subTab("🎴 错题卡")
+        subTabBarcode = subTab("🏷 条码")
         subGroup.addView(subTabText, RadioGroup.LayoutParams(0, RadioGroup.LayoutParams.WRAP_CONTENT, 1f))
         subGroup.addView(subTabImage, RadioGroup.LayoutParams(0, RadioGroup.LayoutParams.WRAP_CONTENT, 1f))
         subGroup.addView(subTabCard, RadioGroup.LayoutParams(0, RadioGroup.LayoutParams.WRAP_CONTENT, 1f))
+        subGroup.addView(subTabBarcode, RadioGroup.LayoutParams(0, RadioGroup.LayoutParams.WRAP_CONTENT, 1f))
         subGroup.setOnCheckedChangeListener { _, checkedId ->
             // 切页：只显示当前功能内容，互不掺和
             textContent.visibility = if (checkedId == subTabText.id) View.VISIBLE else View.GONE
             imageContent.visibility = if (checkedId == subTabImage.id) View.VISIBLE else View.GONE
             cardContent.visibility = if (checkedId == subTabCard.id) View.VISIBLE else View.GONE
+            barcodeContent.visibility = if (checkedId == subTabBarcode.id) View.VISIBLE else View.GONE
             // 着色
-            listOf(subTabText, subTabImage, subTabCard).forEach {
+            listOf(subTabText, subTabImage, subTabCard, subTabBarcode).forEach {
                 it.setTextColor(if (it.id == checkedId) Design.PRIMARY else Design.TEXT_SUB)
             }
         }
         page.addView(subGroup)
 
-        // 三个功能内容块（独立构建，visibility 切换）
+        // 四个功能内容块（独立构建，visibility 切换）
         textContent = buildTextContent()
         imageContent = buildImageContent()
         cardContent = buildCardContent()
+        barcodeContent = buildBarcodeContent()
         page.addView(textContent)
         page.addView(imageContent)
         page.addView(cardContent)
+        page.addView(barcodeContent)
         // 默认文字页
         subTabText.isChecked = true
         return scroll
@@ -456,6 +519,13 @@ class MainActivity : Activity() {
                 defaultIndex = 1,
             ) { autoRefreshTextPreview() }
             addView(fontGroup)
+            // 对齐（2026-08-11 加，参考 QrintPrint-Windows）
+            addView(Design.label("对齐"))
+            alignGroup = Design.segmentGroup(
+                listOf("左对齐" to 0, "居中" to 1, "右对齐" to 2),
+                defaultIndex = 0,
+            ) { autoRefreshTextPreview() }
+            addView(alignGroup)
             boldCheck = Design.check("加粗（小字号更清晰）")
             boldCheck.setOnCheckedChangeListener { _, _ -> autoRefreshTextPreview() }
             addView(boldCheck, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
@@ -682,12 +752,163 @@ class MainActivity : Activity() {
         return col
     }
 
+    // ── 条码内容块（2026-08-11 加，参考 QrintPrint-Windows）──
+    private fun buildBarcodeContent(): LinearLayout {
+        val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+
+        col.addView(Design.card {
+            addView(Design.sectionTitle("条码 / 二维码打印"))
+            addView(Design.caption("二维码 / 条形码，打印后手机可扫"))
+            addView(Design.label("条码类型"))
+            // 类型网格 2 列（自定义互斥高亮）
+            BarcodeGenerator.TYPES.chunked(2).forEach { row ->
+                addView(Design.row {
+                    row.forEach { type ->
+                        val btn = Design.outlineButton(type.label)
+                        barcodeTypeButtons[type] = btn
+                        btn.setOnClickListener {
+                            currentBarcodeType = type
+                            barcodeTypeButtons.forEach { (t, b) ->
+                                b.background = if (t == type) {
+                                    Design.rounded(Design.PRIMARY_CONTAINER, Design.RADIUS_SM)
+                                } else {
+                                    Design.pressable(
+                                        Design.rounded(Design.SURFACE, Design.RADIUS_SM, Design.OUTLINE, 1),
+                                        Design.rounded(Design.PRIMARY_CONTAINER, Design.RADIUS_SM),
+                                    )
+                                }
+                            }
+                            autoRefreshBarcodePreview()
+                        }
+                        addView(btn, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                            if (row.indexOf(type) > 0) marginStart = Design.dp(6)
+                        })
+                    }
+                }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                    topMargin = Design.dp(6)
+                })
+            }
+            barcodeInput = Design.input("输入内容（文字/链接/数字）")
+            addView(barcodeInput, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = Design.dp(8)
+            })
+            barcodeHint = Design.caption(BarcodeGenerator.TYPES[0].hint)
+            addView(barcodeHint, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = Design.dp(4)
+            })
+            // 输入变化 → 实时校验提示 + 自动刷新预览
+            barcodeInput.addTextChangedListener(object : android.text.TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+                override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+                override fun afterTextChanged(s: Editable?) {
+                    val err = BarcodeGenerator.validate(currentBarcodeType, barcodeInput.text.toString())
+                    if (err != null) {
+                        barcodeHint.text = "⚠️ $err"
+                        barcodeHint.setTextColor(Design.ERROR)
+                    } else {
+                        barcodeHint.text = currentBarcodeType.hint
+                        barcodeHint.setTextColor(Design.TEXT_SUB)
+                    }
+                    autoRefreshBarcodePreview()
+                }
+            })
+        })
+
+        // 预览
+        col.addView(Design.card {
+            addView(Design.sectionTitle("打印预览"))
+            barcodePreview = ImageView(this@MainActivity).apply {
+                adjustViewBounds = true
+                scaleType = ImageView.ScaleType.FIT_CENTER
+            }
+            addView(barcodePreview, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = Design.dp(8)
+            })
+            addView(Design.caption("先预览再打印，防废纸"))
+        })
+
+        val printBtn = Design.primaryButton("🏷 打印条码")
+        col.addView(printBtn, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+            topMargin = Design.dp(4)
+        })
+        printBtn.setOnClickListener { doPrintBarcode() }
+
+        barcodeStatus = Design.caption("")
+        col.addView(barcodeStatus)
+        return col
+    }
+
+    /** 条码自动刷新预览：类型/内容变化时，有效则重渲 */
+    private fun autoRefreshBarcodePreview() {
+        if (barcodePreview.drawable == null) return
+        if (BarcodeGenerator.validate(currentBarcodeType, barcodeInput.text.toString()) == null) {
+            renderBarcodePreview()
+        }
+    }
+
+    /** 条码预览：校验 → 生成 → 走图片通道渲染 */
+    private fun renderBarcodePreview() {
+        try {
+            val err = BarcodeGenerator.validate(currentBarcodeType, barcodeInput.text.toString())
+            if (err != null) {
+                barcodeStatus.text = "内容无效：$err"
+                barcodeStatus.setTextColor(Design.ERROR)
+                return
+            }
+            val bmp = BarcodeGenerator.encodeBitmap(currentBarcodeType, barcodeInput.text.toString())
+            val raster = RasterEncoder.encode(bmp, DitherMode.NONE, RasterEncoder.THRESHOLD_IMAGE)
+            barcodePreview.setImageBitmap(imagePreviewRaster(raster))
+            barcodeStatus.text = "条码预览已生成（${raster.widthBytes * 8}×${raster.height} 点）"
+            barcodeStatus.setTextColor(Design.TEXT_SUB)
+        } catch (e: Exception) {
+            barcodeStatus.text = "生成失败：${e.javaClass.simpleName}"
+            barcodeStatus.setTextColor(Design.ERROR)
+        }
+    }
+
+    /** 条码打印：预览确认 → 图片通道（m=2 + 行合并） */
+    private fun doPrintBarcode() {
+        barcodeStatus.text = "正在生成预览 ..."
+        scope.launch {
+            try {
+                val err = BarcodeGenerator.validate(currentBarcodeType, barcodeInput.text.toString())
+                if (err != null) {
+                    barcodeStatus.setTextColor(Design.ERROR)
+                    barcodeStatus.text = "内容无效：$err"
+                    return@launch
+                }
+                val bmp = BarcodeGenerator.encodeBitmap(currentBarcodeType, barcodeInput.text.toString())
+                val raster = RasterEncoder.encode(bmp, DitherMode.NONE, RasterEncoder.THRESHOLD_IMAGE)
+                val previewBmp = imagePreviewRaster(raster)
+                barcodePreview.setImageBitmap(previewBmp)
+                previewConfirmDialog("确认打印条码", previewBmp) {
+                    doPrintConfirmed(raster, mode = 2, halveRows = true, okMessage = "条码打印完成",
+                        statusView = barcodeStatus, historyType = "条码", historyTitle = barcodeInput.text.toString().take(20))
+                }
+            } catch (e: Exception) {
+                barcodeStatus.setTextColor(Design.ERROR)
+                barcodeStatus.text = "条码生成失败：${e.javaClass.simpleName} ${e.message}"
+            }
+        }
+    }
+
     // ═══════════════════════ 我的页 ═══════════════════════
 
     private fun buildMinePage(): View {
         val page = Design.page()
         val scroll = ScrollView(this).apply { setBackgroundColor(Design.BG) }
         scroll.addView(page)
+
+        // 打印历史入口（2026-08-11 加）
+        page.addView(Design.card {
+            addView(Design.sectionTitle("打印记录"))
+            addView(Design.caption("最近 100 条打印，可一键重新打印"))
+            val historyBtn = Design.outlineButton("🕘 打印历史")
+            addView(historyBtn, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = Design.dp(8)
+            })
+            historyBtn.setOnClickListener { startActivity(Intent(this@MainActivity, HistoryActivity::class.java)) }
+        })
 
         page.addView(Design.card {
             addView(Design.sectionTitle("设备管理"))
@@ -706,6 +927,43 @@ class MainActivity : Activity() {
                 listDevices()
                 startBleScan()
             }
+        })
+
+        // 打印设置（2026-08-11 加，参考 QrintPrint-Windows：浓度/进纸/出纸可调并持久化）
+        page.addView(Design.card {
+            addView(Design.sectionTitle("打印设置"))
+            addView(Design.caption("加热浓度（X1 合法 0~2）· 前后走纸点数"))
+            addView(Design.label("浓度（0 淡 / 1 中 / 2 浓）"))
+            val thicknessGroup = Design.segmentGroup(
+                listOf("0(淡)" to 0, "1(中)" to 1, "2(浓)" to 2),
+                defaultIndex = Settings.thickness,
+            ) { i ->
+                Settings.thickness = i
+            }
+            addView(thicknessGroup)
+            addView(Design.row {
+                addView(Design.label("进纸（打印前走纸）"), LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                addView(Design.label("出纸（打印后走纸）"), LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            })
+            addView(Design.row {
+                val feedBeforeInput = Design.input("默认 10", lines = 1)
+                feedBeforeInput.setText(Settings.feedBefore.toString())
+                feedBeforeInput.inputType = android.text.InputType.TYPE_CLASS_NUMBER
+                val feedAfterInput = Design.input("默认 100", lines = 1)
+                feedAfterInput.setText(Settings.feedAfter.toString())
+                feedAfterInput.inputType = android.text.InputType.TYPE_CLASS_NUMBER
+                addView(feedBeforeInput, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                addView(feedAfterInput, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    marginStart = Design.dp(8)
+                })
+                // 失焦时保存（非法/空值回退默认，Settings 内部 clamp 0~255）
+                feedBeforeInput.setOnFocusChangeListener { _, hasFocus ->
+                    if (!hasFocus) Settings.feedBefore = feedBeforeInput.text.toString().toIntOrNull() ?: 10
+                }
+                feedAfterInput.setOnFocusChangeListener { _, hasFocus ->
+                    if (!hasFocus) Settings.feedAfter = feedAfterInput.text.toString().toIntOrNull() ?: 100
+                }
+            })
         })
 
         page.addView(Design.card {
@@ -763,6 +1021,16 @@ class MainActivity : Activity() {
         }
         ensurePermission()
         startBleScan()
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        // App 前台运行时 am start 走 onNewIntent（不走 onCreate/onResume）——自检在此触发
+        if (intent.getBooleanExtra("run_preview_check", false)) {
+            intent.removeExtra("run_preview_check")
+            runPreviewCheck()
+        }
     }
 
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
@@ -950,6 +1218,46 @@ class MainActivity : Activity() {
         runCatching { scanner.stopScan(scanCallback) }
     }
 
+    /**
+     * 机器状态灯刷新（仿 QrintPrint-Windows StatusLights）：
+     * 读轮询缓存 lastStatus / batteryPercent，五灯着色：
+     * 绿=正常 红=异常 灰=未知 蓝=打印中；电量<15% 红灯。
+     */
+    private fun updateMachineStatus() {
+        if (!printer.connected) return
+        val st = printer.lastStatus
+        val battery = printer.batteryPercent
+        fun setLight(key: String, color: Int) {
+            statusDots[key]?.background = Design.rounded(color, Design.dp(12).toFloat())
+        }
+        val green = 0xFF3FAE4F.toInt()
+        val red = 0xFFE04A3A.toInt()
+        val gray = 0xFFB4BACB.toInt()
+        val blue = 0xFF2196F3.toInt()
+        setLight("paper", st?.let { if (it.noPaper) red else green } ?: gray)
+        setLight("cover", st?.let { if (it.coverOpen) red else green } ?: gray)
+        setLight("thermal", st?.let { if (it.overheat) red else green } ?: gray)
+        setLight("printing", if (st?.printing == true) blue else gray)
+        if (battery != null) {
+            setLight("battery", if (battery < 15) red else green)
+            statusDotLabels["battery"]?.text = "电量 $battery%"
+        } else {
+            setLight("battery", gray)
+            statusDotLabels["battery"]?.text = "电量"
+        }
+    }
+
+    /** 启动状态灯轮询（10s，与 BlePrinterConnection 轮询同周期） */
+    private fun startStatusRefresh() {
+        statusRefreshJob?.cancel()
+        statusRefreshJob = scope.launch {
+            while (isActive) {
+                delay(10_000)
+                updateMachineStatus()
+            }
+        }
+    }
+
     private fun connectDevice(dev: BluetoothDevice) {
         val name = dev.name ?: "打印机"
         statusText.text = "⏳ 正在连接 $name ..."
@@ -965,8 +1273,11 @@ class MainActivity : Activity() {
                     append("✅ 已连接 $name\n")
                     append("型号 ${printer.deviceModel.ifEmpty { "?" }} · 固件 ${printer.firmwareVersion.ifEmpty { "?" }}")
                     printer.batteryPercent?.let { append(" · 电量 $it%") }
+                    if (printer.btVersion.isNotEmpty()) append("\n蓝牙版本 ${printer.btVersion}")
                 }
                 statusText.setTextColor(Design.TEXT)
+                updateMachineStatus()
+                startStatusRefresh()
             } else {
                 statusBadge.text = "● 未连接"
                 statusBadge.setTextColor(0xFFD8E2FF.toInt())
@@ -983,7 +1294,9 @@ class MainActivity : Activity() {
     private fun encodeTextWithSettings(text: String): RasterData {
         val size = (fontGroup.checkedRadioButtonId.takeIf { it != -1 }
             ?.let { fontGroup.findViewById<RadioButton>(it)?.tag as? Int }) ?: 48
-        return RasterEncoder.encodeText(text, fontSizePx = size, bold = boldCheck.isChecked)
+        val align = (alignGroup.checkedRadioButtonId.takeIf { it != -1 }
+            ?.let { alignGroup.findViewById<RadioButton>(it)?.tag as? Int }) ?: 0
+        return RasterEncoder.encodeText(text, fontSizePx = size, bold = boldCheck.isChecked, align = align)
     }
 
     /** 图片类光栅 → 预览（行合并 + verticalScale=2 模拟 m=2，与实物一致） */
@@ -1116,13 +1429,19 @@ class MainActivity : Activity() {
         }
     }
 
-    /** 确认后执行打印（preflight 现查 + printRaster + 状态显示） */
+    /**
+     * 确认后执行打印（preflight 现查 + printRaster + 状态显示 + 历史记录）。
+     * @param historyType 历史类型（文字/图片/错题卡/模板/条码/自检页）
+     * @param historyTitle 历史标题（重打列表显示）
+     */
     private fun doPrintConfirmed(
         raster: RasterData,
         mode: Int,
         halveRows: Boolean,
         okMessage: String,
         statusView: TextView,
+        historyType: String,
+        historyTitle: String,
     ) {
         scope.launch {
             try {
@@ -1134,13 +1453,23 @@ class MainActivity : Activity() {
                 }
                 val r = printer.printRaster(
                     raster,
-                    thickness = BlePrinterConnection.DEFAULT_THICKNESS,
+                    thickness = Settings.thickness,
                     mode = mode,
                     halveRows = halveRows,
+                    feedBefore = Settings.feedBefore,
+                    feedAfter = Settings.feedAfter,
                 )
                 if (r.ok) {
                     statusView.setTextColor(Design.OK)
                     statusView.text = "✅ $okMessage"
+                    // 打印成功 → 记历史（无损光栅 + 缩略图）
+                    runCatching {
+                        val preview = RasterEncoder.rasterToPreviewBitmap(
+                            if (halveRows) RasterEncoder.halveRows(raster) else raster,
+                            verticalScale = if (halveRows) 2 else 1,
+                        )
+                        HistoryStore.add(historyType, historyTitle, raster, preview)
+                    }
                 } else {
                     statusView.setTextColor(Design.ERROR)
                     statusView.text = "❌ ${okMessage}失败：${r.message}"
@@ -1170,7 +1499,8 @@ class MainActivity : Activity() {
                 textPreview.setImageBitmap(bmp)
                 val desc = "${raster.widthBytes * 8}×${raster.height} 点，约 ${"%.0f".format(raster.height / 8.0)}mm 高"
                 previewConfirmDialog("确认打印文字（$desc）", bmp) {
-                    doPrintConfirmed(raster, mode = 0, halveRows = false, okMessage = "文字打印完成", statusView = textStatus)
+                    doPrintConfirmed(raster, mode = 0, halveRows = false, okMessage = "文字打印完成",
+                        statusView = textStatus, historyType = "文字", historyTitle = text.take(20))
                 }
             } catch (e: Exception) {
                 PrintLog.event("文字打印异常: ${e.javaClass.simpleName}: ${e.message}")
@@ -1194,7 +1524,8 @@ class MainActivity : Activity() {
                 imagePreview.setImageBitmap(bmp)
                 val desc = "${raster.widthBytes * 8}×${raster.height} 点，约 ${"%.0f".format(raster.height / 8.0)}mm 高"
                 previewConfirmDialog("确认打印图片（$desc）", bmp) {
-                    doPrintConfirmed(raster, mode = 2, halveRows = true, okMessage = "图片打印完成", statusView = imageStatus)
+                    doPrintConfirmed(raster, mode = 2, halveRows = true, okMessage = "图片打印完成",
+                        statusView = imageStatus, historyType = "图片", historyTitle = "图片 ${selectedImages.size} 张")
                 }
             } catch (e: Exception) {
                 PrintLog.event("图片打印异常: ${e.javaClass.simpleName}: ${e.message}")
@@ -1259,7 +1590,8 @@ class MainActivity : Activity() {
                 val bmp = imagePreviewRaster(raster)
                 cardPreview.setImageBitmap(bmp)
                 previewConfirmDialog("确认打印错题卡", bmp) {
-                    doPrintConfirmed(raster, mode = 2, halveRows = true, okMessage = "错题卡打印完成", statusView = cardStatus)
+                    doPrintConfirmed(raster, mode = 2, halveRows = true, okMessage = "错题卡打印完成",
+                        statusView = cardStatus, historyType = "错题卡", historyTitle = reason.ifEmpty { knowledge })
                 }
             } catch (e: Exception) {
                 PrintLog.event("错题卡异常: ${e.javaClass.simpleName}: ${e.message}")
@@ -1278,7 +1610,8 @@ class MainActivity : Activity() {
                 val raster = RasterEncoder.encode(page, DitherMode.NONE, RasterEncoder.THRESHOLD_TEXT)
                 val bmp = imagePreviewRaster(raster)
                 previewConfirmDialog("确认打印模板", bmp) {
-                    doPrintConfirmed(raster, mode = 2, halveRows = true, okMessage = "模板打印完成", statusView = imageStatus)
+                    doPrintConfirmed(raster, mode = 2, halveRows = true, okMessage = "模板打印完成",
+                        statusView = imageStatus, historyType = "模板", historyTitle = "模板")
                 }
             } catch (e: Exception) {
                 PrintLog.event("模板异常: ${e.javaClass.simpleName}: ${e.message}")
@@ -1301,7 +1634,8 @@ class MainActivity : Activity() {
                 val raster = RasterEncoder.encode(page, DitherMode.FLOYD_STEINBERG)
                 val bmp = imagePreviewRaster(raster)
                 previewConfirmDialog("确认打印自检页", bmp) {
-                    doPrintConfirmed(raster, mode = 2, halveRows = true, okMessage = "自检页打印完成", statusView = cardStatus)
+                    doPrintConfirmed(raster, mode = 2, halveRows = true, okMessage = "自检页打印完成",
+                        statusView = cardStatus, historyType = "自检页", historyTitle = "打印测试页")
                 }
             } catch (e: Exception) {
                 PrintLog.event("自检页异常: ${e.javaClass.simpleName}: ${e.message}")

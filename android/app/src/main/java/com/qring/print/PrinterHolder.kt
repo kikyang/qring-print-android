@@ -21,6 +21,8 @@ object PrinterHolder {
         if (!::appContext.isInitialized) {
             appContext = context.applicationContext
             PrintLog.initLogFile(appContext)
+            Settings.init(appContext)
+            HistoryStore.init(appContext)
         }
     }
 
