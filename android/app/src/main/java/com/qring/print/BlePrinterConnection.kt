@@ -1,0 +1,579 @@
+package com.qring.print
+
+import android.annotation.SuppressLint
+import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothGatt
+import android.bluetooth.BluetoothGattCallback
+import android.bluetooth.BluetoothGattCharacteristic
+import android.bluetooth.BluetoothGattDescriptor
+import android.bluetooth.BluetoothProfile
+import android.bluetooth.BluetoothManager
+import android.content.Context
+import android.os.Build
+import androidx.core.content.ContextCompat
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import java.util.UUID
+
+/**
+ * 错题小印 X1 蓝牙连接管理 —— **BLE 透传通道**（写 FF02 / 通知 FF01）。
+ *
+ * 2026-08-10 实物联调结论（X1 实测）：
+ * - 控制通道是 BLE 透传（ISSC 芯片，FF00 服务），SPP 是空壳（RFCOMM 能连但数据无人消费）
+ * - 打印流程：STOP复位 → ENABLE → 浓度 → WAKEUP → ESC@ → 前走纸 → 光栅 → 后走纸 → STOP → 等 ACK
+ *   **不要 ENABLE2（1F B2 10）**：X1 固件不识别，会被文本引擎渲染成「固」字乱码
+ * - 光栅用 GS v 0 **m=0**（m=1 对含 0x00 的数据有 bug）
+ * - 浓度合法范围 0~2（3/4 报 ER），默认 2
+ * - 发送分包 32B + 带响应（WRITE_TYPE_DEFAULT）+ 包间 60ms：
+ *   透传芯片缓冲小，write-without-response 快速写会丢包导致光栅数据残缺
+ */
+@SuppressLint("MissingPermission")
+class BlePrinterConnection(
+    private val appContext: Context,
+    private val scope: CoroutineScope,
+) {
+    companion object {
+        private val SERVICE_UUID: UUID = UUID.fromString("0000ff00-0000-1000-8000-00805f9b34fb")
+        private val WRITE_UUID: UUID = UUID.fromString("0000ff02-0000-1000-8000-00805f9b34fb")
+        private val NOTIFY_UUID: UUID = UUID.fromString("0000ff01-0000-1000-8000-00805f9b34fb")
+        private val CCCD_UUID: UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
+
+        /** 状态轮询间隔 */
+        private const val POLL_INTERVAL_MS = 10_000L
+        /** 查询响应等待上限 */
+        private const val QUERY_TIMEOUT_MS = 1_500L
+        /** 发命令后等打印机准备响应的时间，照搬 SDK */
+        private const val QUERY_SETTLE_MS = 150L
+        /** 等打印完成 ACK 的上限 */
+        private const val ACK_TIMEOUT_MS = 120_000L
+        /** 打印前后走纸点行 */
+        private const val FEED_BEFORE = 10
+        private const val FEED_AFTER = 100
+        /** 接收缓冲兜底上限 */
+        private const val RX_BUFFER_MAX = 4096
+        /** BLE 透传单包上限（实测 32B 稳定，MTU 23 时 20B 也能用） */
+        private const val BLE_CHUNK = 32
+        /** 分包间隔：越慢打印头越热（热积累显色更深），用户实测要求更慢 */
+        private const val BLE_CHUNK_DELAY_MS = 80L
+        /** 默认打印浓度（X1 合法范围 0~2，实测 2 显色最好） */
+        const val DEFAULT_THICKNESS = 2
+        /** 光栅分块行数：单次 GS v 0 超限会固字瀑布（实测 m=0 时 128 行 OK / 256 行失败）。
+         *  m=2 双倍高时每行数据打两遍（物理 2 倍行），取 64 行数据（=128 物理行）保守安全 */
+        private const val RASTER_CHUNK_ROWS = 64
+
+        /** ESC @ 初始化（文本/光栅打印前的解析器复位） */
+        private val CMD_ESC_INIT = byteArrayOf(0x1B, 0x40)
+    }
+
+    @Volatile var connectedDevice: BluetoothDevice? = null
+        private set
+
+    @Volatile var connected: Boolean = false
+        private set
+
+    /** 最近一次状态（轮询 / 查询写入） */
+    @Volatile var lastStatus: QringStatus? = null
+        private set
+
+    @Volatile var batteryPercent: Int? = null
+        private set
+
+    @Volatile var deviceModel: String = ""
+        private set
+
+    @Volatile var firmwareVersion: String = ""
+        private set
+
+    private var gatt: BluetoothGatt? = null
+    private var writeChar: BluetoothGattCharacteristic? = null
+    private var notifyChar: BluetoothGattCharacteristic? = null
+
+    /** 打印任务进行中 —— 期间暂停状态轮询 */
+    @Volatile private var busy = false
+
+    /** 滚动接收缓冲。响应长度不定，还会随时插入 FF xx 主动上报帧 */
+    private val rxBuffer = ArrayDeque<Int>()
+
+    private val mutex = Mutex()
+    private var pollJob: kotlinx.coroutines.Job? = null
+
+    /** 当前等待的连接/服务发现（回调驱动） */
+    private var connectPending: CompletableDeferred<Boolean>? = null
+
+    // ── 连接 / 断开 ───────────────────────────────────────────
+
+    /**
+     * 连接设备（阻塞调用方协程直到连接成功/失败）。
+     * 打印机要求 LE 加密连接：首次连接若失败且设备未配对，自动发起配对并重连。
+     */
+    suspend fun connect(device: BluetoothDevice): Boolean = withContext(Dispatchers.IO) {
+        disconnect()
+        if (!tryConnect(device)) {
+            // 首次连接失败：打印机要求 LE 配对（ISSC 透传），配对后重连
+            if (device.bondState != BluetoothDevice.BOND_BONDED) {
+                if (awaitBond(device)) {
+                    if (!tryConnect(device)) return@withContext false
+                } else {
+                    return@withContext false
+                }
+            } else {
+                return@withContext false
+            }
+        }
+        // 连接成功：等通知订阅（CCCD）生效 + 打印机就绪，再查设备信息
+        delay(600)
+        queryDeviceInfo()
+        startPolling()
+        PrintLog.event("连接成功 ${device.name} ${device.address}")
+        true
+    }
+
+    /** 发起 LE 配对并等待完成（BOND_BONDED）；用户取消返回 false */
+    @SuppressLint("MissingPermission")
+    private suspend fun awaitBond(device: BluetoothDevice): Boolean = withContext(Dispatchers.IO) {
+        val deferred = CompletableDeferred<Boolean>()
+        val appContext = appContext
+        val receiver = object : android.content.BroadcastReceiver() {
+            override fun onReceive(context: android.content.Context?, intent: android.content.Intent?) {
+                val dev = intent?.getParcelableExtra<BluetoothDevice>(BluetoothDevice.EXTRA_DEVICE)
+                    ?: return
+                if (dev.address != device.address) return
+                when (intent.getIntExtra(BluetoothDevice.EXTRA_BOND_STATE, -1)) {
+                    BluetoothDevice.BOND_BONDED -> deferred.complete(true)
+                    BluetoothDevice.BOND_NONE -> deferred.complete(false)
+                }
+            }
+        }
+        appContext.registerReceiver(
+            receiver,
+            android.content.IntentFilter(BluetoothDevice.ACTION_BOND_STATE_CHANGED),
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
+        try {
+            val started = runCatching { device.createBond() }.getOrDefault(false)
+            if (!started) {
+                appContext.unregisterReceiver(receiver)
+                return@withContext false
+            }
+            val ok = withTimeoutOrNull(20_000L) { deferred.await() } ?: false
+            appContext.unregisterReceiver(receiver)
+            ok
+        } catch (e: Exception) {
+            runCatching { appContext.unregisterReceiver(receiver) }
+            false
+        }
+    }
+
+    /** 单次 GATT 连接尝试 */
+    private suspend fun tryConnect(device: BluetoothDevice): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val manager = appContext.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+            val deferred = CompletableDeferred<Boolean>()
+            connectPending = deferred
+            val cb = object : BluetoothGattCallback() {
+                override fun onConnectionStateChange(g: BluetoothGatt, status: Int, newState: Int) {
+                    if (newState == BluetoothProfile.STATE_CONNECTED) {
+                        g.discoverServices()
+                    } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
+                        PrintLog.event("GATT 断开 status=$status")
+                        connectPending?.complete(false)
+                        connectPending = null
+                        connected = false
+                        connectedDevice = null
+                    }
+                }
+
+                override fun onServicesDiscovered(g: BluetoothGatt, status: Int) {
+                    if (status != BluetoothGatt.GATT_SUCCESS) {
+                        connectPending?.complete(false)
+                        connectPending = null
+                        return
+                    }
+                    val svc = g.getService(SERVICE_UUID)
+                    if (svc == null) {
+                        connectPending?.complete(false)
+                        connectPending = null
+                        return
+                    }
+                    writeChar = svc.getCharacteristic(WRITE_UUID)
+                    notifyChar = svc.getCharacteristic(NOTIFY_UUID)
+                    if (writeChar == null || notifyChar == null) {
+                        connectPending?.complete(false)
+                        connectPending = null
+                        return
+                    }
+                    // 订阅通知（CCCD 写 enable）
+                    subscribeNotify(g, notifyChar!!)
+                    // 尽力提升 MTU（提升失败也能用 20B 包）
+                    runCatching { g.requestMtu(517) }
+                    connectPending?.complete(true)
+                    connectPending = null
+                }
+
+                override fun onCharacteristicChanged(
+                    g: BluetoothGatt,
+                    characteristic: BluetoothGattCharacteristic,
+                    value: ByteArray,
+                ) {
+                    onRx(value)
+                }
+
+            }
+            // 必须指定 TRANSPORT_LE：DUAL 设备默认走 BR/EDR，但打印机 GATT 服务只在 BLE 上
+            gatt = device.connectGatt(appContext, false, cb, BluetoothDevice.TRANSPORT_LE)
+            if (gatt == null) {
+                connectPending = null
+                return@withContext false
+            }
+            val ok = deferred.await()
+            if (!ok) {
+                gatt?.close(); gatt = null
+                connectedDevice = null; connected = false
+                return@withContext false
+            }
+            connectedDevice = device
+            connected = true
+        } catch (e: Exception) {
+            gatt?.close(); gatt = null
+            connectedDevice = null; connected = false
+            return@withContext false
+        }
+        true
+    }
+
+    private fun subscribeNotify(g: BluetoothGatt, char: BluetoothGattCharacteristic) {
+        runCatching {
+            g.setCharacteristicNotification(char, true)
+            val cccd = char.getDescriptor(CCCD_UUID) ?: return
+            g.writeDescriptor(cccd, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
+        }
+    }
+
+    suspend fun disconnect() {
+        mutex.withLock {
+            stopPolling()
+            rxBuffer.clear()
+            busy = false
+            runCatching { gatt?.disconnect() }
+            runCatching { gatt?.close() }
+            gatt = null
+            writeChar = null
+            notifyChar = null
+            connected = false
+            connectedDevice = null
+            lastStatus = null
+            batteryPercent = null
+            deviceModel = ""
+            firmwareVersion = ""
+        }
+    }
+
+    // ── 底层收发 ──────────────────────────────────────────────
+
+    /**
+     * 发送数据（分包 32B + 带响应 + 60ms 间隔）。
+     * 透传芯片缓冲小，必须带响应确认逐包送达，否则光栅数据会残缺。
+     */
+    private suspend fun send(data: ByteArray): Boolean {
+        val g = gatt ?: return false
+        val char = writeChar ?: return false
+        val total = data.size
+        var offset = 0
+        while (offset < total) {
+            val end = minOf(offset + BLE_CHUNK, total)
+            val chunk = data.copyOfRange(offset, end)
+            // 无确认写（onCharacteristicWrite 回调在 SDK 34 不可 override），
+            // 靠小包 + 固定间隔让透传芯片消化，电脑端已实测稳定。
+            // SDK 33+ 的 writeCharacteristic 返回 int 状态码（0=成功）
+            // 2026-08-11: writeCharacteristic 可能抛异常（未连接/权限/栈异常），
+            // 吞掉转失败返回——查询/打印路径都依赖它，不能让它崩协程
+            val status = try {
+                g.writeCharacteristic(
+                    char, chunk, BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
+                )
+            } catch (e: Exception) {
+                PrintLog.event("写特征异常: ${e.javaClass.simpleName}: ${e.message}")
+                return false
+            }
+            if (status != BluetoothGatt.GATT_SUCCESS) return false
+            delay(BLE_CHUNK_DELAY_MS)
+            offset = end
+        }
+        PrintLog.log('T', data)
+        return true
+    }
+
+    private suspend fun sendAll(commands: List<ByteArray>): Boolean {
+        for (cmd in commands) {
+            if (!send(cmd)) return false
+        }
+        return true
+    }
+
+    private suspend fun waitBytes(n: Int, timeoutMs: Long): List<Int> {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            synchronized(rxBuffer) {
+                if (rxBuffer.size >= n) {
+                    return List(n) { rxBuffer.removeFirst() }.also { logRx(it) }
+                }
+            }
+            delay(20)
+        }
+        synchronized(rxBuffer) {
+            val all = rxBuffer.toList()
+            rxBuffer.clear()
+            return all.also { logRx(it) }
+        }
+    }
+
+    private fun onRx(bytes: ByteArray) {
+        synchronized(rxBuffer) {
+            for (b in bytes) rxBuffer.addLast(b.toInt() and 0xFF)
+            while (rxBuffer.size > RX_BUFFER_MAX) rxBuffer.removeFirst()
+        }
+    }
+
+    private fun logRx(bytes: List<Int>) {
+        if (bytes.isNotEmpty()) {
+            PrintLog.log('R', bytes.map { it.toByte() }.toByteArray())
+        }
+    }
+
+    /** 清空输入 → 发命令 → 稍等 → 读响应。这是官方 SDK 的固定套路 */
+    private suspend fun query(command: ByteArray, nbytes: Int): List<Int> {
+        synchronized(rxBuffer) { rxBuffer.clear() }
+        if (!send(command)) return emptyList()
+        delay(QUERY_SETTLE_MS)
+        return waitBytes(nbytes, QUERY_TIMEOUT_MS)
+    }
+
+    /** 等打印完成 ACK (0xAA)，同时盯 FF xx 故障帧 */
+    private suspend fun waitAck(timeoutMs: Long): PrintResult {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            synchronized(rxBuffer) {
+                if (rxBuffer.contains(ACK_PRINT_DONE)) {
+                    rxBuffer.clear()
+                    return PrintResult(true, "打印完成")
+                }
+                val it = rxBuffer.iterator()
+                var prev: Int? = null
+                while (it.hasNext()) {
+                    val b = it.next()
+                    if (prev == FAULT_FRAME_HEAD) {
+                        FaultCode.from(b)?.let { fc ->
+                            rxBuffer.clear()
+                            return PrintResult(false, fc.label)
+                        }
+                    }
+                    prev = b
+                }
+            }
+            delay(100)
+        }
+        return PrintResult(false, "等待打印完成超时")
+    }
+
+    // ── 查询 ──────────────────────────────────────────────────
+
+    suspend fun queryStatus(): QringStatus? {
+        val resp = query(CMD_STATUS, 1)
+        if (resp.isEmpty()) return null
+        return parseStatus(resp[0]).also { lastStatus = it }
+    }
+
+    /** 电量：响应 2 字节，第 2 字节才是百分比 */
+    suspend fun queryBattery(): Int? {
+        val resp = query(CMD_BATTERY, 2)
+        if (resp.size < 2) return null
+        return resp[1].also { batteryPercent = it }
+    }
+
+    /** 字符串类查询：型号 / 固件版本 */
+    private suspend fun queryString(command: ByteArray): String {
+        val resp = query(command, 64)
+        return String(
+            resp.filter { it in 0x20..0x7E }.map { it.toByte() }.toByteArray()
+        ).trim()
+    }
+
+    suspend fun queryDeviceInfo() {
+        // X1：设备信息走 10 FF 70（名称|MAC|MAC|固件版本|SN|电量），实测 67 字节
+        // 2026-08-11 实测：10 FF 31 全变体无响应（X1 固件不支持），勿用；
+        // 固件版本 = 10 FF 70 第 4 段 = 10 FF 20 F1 返回的 V1.05，二者一致
+        val info = query(CMD_DEVICE_INFO, 128)
+        val text = String(info.filter { it in 0x20..0x7E }.map { it.toByte() }.toByteArray()).trim()
+        if (text.isNotEmpty()) {
+            val parts = text.split("|")
+            if (parts.size >= 5) {
+                deviceModel = parts[0]
+                firmwareVersion = parts[3]
+            }
+        }
+        if (deviceModel.isEmpty()) deviceModel = queryString(CMD_MODEL)
+        if (firmwareVersion.isEmpty()) firmwareVersion = queryString(CMD_FW_VERSION)
+    }
+
+    /**
+     * 打印前体检。返回故障文案，null 表示可以打印。
+     * 这里现查一次而不是读轮询缓存 —— 轮询间隔 10s，
+     * 用户可能刚掀开上盖或刚用完纸就点了打印，缓存值是过期的。
+     * 查不到状态（打印机没回包）时返回 null 放行：宁可让打印试一次、
+     * 失败时由 ACK 阶段的故障帧兜住。
+     */
+    suspend fun preflightCheck(): String? {
+        if (!connected) return "打印机未连接"
+        val status = queryStatus() ?: return null
+        return faultMessage(status)
+    }
+
+    // ── 打印 ──────────────────────────────────────────────────
+
+    /**
+     * 打印一张已经转好的光栅位图。
+     * X1 实测定稿时序（2026-08-10 起逐步验证）：
+     *   STOP复位 → ENABLE → 浓度 → WAKEUP → ESC@ → 前走纸 → 光栅 → 后走纸 → STOP → 等 ACK
+     *   无 ENABLE2（X1 固件不识别，会渲染成「固」字乱码）
+     *
+     * @param mode 光栅模式：文字走 m=0（用户实测文字本来就黑，不需要加深）；
+     *   图片走 m=2 + halveRows=true（2026-08-11 打黑定稿）：
+     *   - m=2/3 比 m=0 黑（每行加热两遍），00 字节安全（m=1 有 00 bug）
+     *   - 但 m=2 是标准"双倍高"（垂直复制），直接打图片会纵向拉长 2 倍（用户实测确认）
+     *   - 解法：halveRows=true 先把数据行 OR 合并减半，m=2 双打还原高度 → 黑度↑ 比例不变
+     * @param halveRows 行合并减半（仅图片通道，配合 m=2 使用）
+     */
+    suspend fun printRaster(
+        raster: RasterData,
+        thickness: Int? = null,
+        mode: Int = 0,
+        halveRows: Boolean = false,
+    ): PrintResult {
+        if (!connected) return PrintResult(false, "打印机未连接")
+        if (busy) return PrintResult(false, "上一个打印任务还没结束")
+
+        busy = true
+        stopPolling()
+        synchronized(rxBuffer) { rxBuffer.clear() }
+        PrintLog.event("打印开始 mode=$mode halve=$halveRows 行=${raster.height}")
+
+        try {
+            if (!send(CMD_STOP)) return PrintResult(false, "发送失败，连接可能已断开")
+            delay(100)
+            if (!send(CMD_ENABLE)) return PrintResult(false, "发送失败，连接可能已断开")
+            val t = thickness ?: DEFAULT_THICKNESS
+            send(cmdThickness(t))
+            send(CMD_WAKEUP)
+            send(CMD_ESC_INIT)
+
+            // 无预热条：2026-08-11 用户实测排除——文字不打预热本来就黑；
+            // 全黑块打不打预热都不黑（固件电流限制，strobe 固定短）。
+            // 预热条只会白费纸 + 顶部多一条怪黑条（光栅头紧跟 ESC@ 被文本引擎吞字节）
+            sendAll(cmdFeed(FEED_BEFORE))
+
+            // 图片通道：先行合并减半（2 行 OR 1 行），再用 m=2 双打
+            val data = if (halveRows) RasterEncoder.halveRows(raster) else raster
+            val h = data.height
+
+            // 光栅分块发送：单次 GS v 0 数据量超限会固字瀑布（实测 128 行 OK / 256 行失败）。
+            // 每块独立 GS v 0 头 + 块间短延迟，打印连续不中断。
+            val w = data.widthBytes
+            var rowOffset = 0
+            while (rowOffset < h) {
+                val rows = minOf(RASTER_CHUNK_ROWS, h - rowOffset)
+                send(cmdRasterHeader(w, rows, mode))
+                val chunk = data.data.copyOfRange(
+                    rowOffset * w, (rowOffset + rows) * w
+                )
+                if (!send(chunk)) return PrintResult(false, "位图发送中断")
+                rowOffset += rows
+                delay(150)
+            }
+
+            sendAll(cmdFeed(FEED_AFTER))
+            send(CMD_STOP)
+
+            return waitAck(ACK_TIMEOUT_MS)
+        } catch (e: Exception) {
+            // 2026-08-11 自检页"一点就断连"根因：协程无 try-catch，BLE 异常直接崩 App。
+            // 任何底层异常转为打印失败结果，绝不崩协程。
+            PrintLog.event("打印异常: ${e.javaClass.simpleName}: ${e.message}")
+            return PrintResult(false, "打印中断（${e.javaClass.simpleName}），请重新连接后重试")
+        } finally {
+            busy = false
+            // 打完刷新一次状态，纸张/电量会有变化（查询失败不抛——否则会掩盖上面 return 的结果）
+            runCatching { refreshAll() }
+            startPolling()
+        }
+    }
+
+    /** 查一轮状态 + 电量 */
+    suspend fun refreshAll() {
+        queryStatus()
+        queryBattery()
+    }
+
+    // ── 调试：原始命令台 ──────────────────────────────────────
+
+    /**
+     * 发送任意原始命令并等待响应（最多 64 字节，超时 1500ms）。
+     * 联调排查用：hex 形如 "10 FF 40"、"1B 4A 32"。
+     * @return 响应字节；超时返回已收到的内容（可能为空）
+     */
+    suspend fun sendCommand(hex: String, expectBytes: Int = 64): List<Int> {
+        val clean = hex.replace(" ", "").replace(",", "")
+        require(clean.isNotEmpty() && clean.length % 2 == 0) { "hex 格式错误，应为偶数位十六进制" }
+        val bytes = ByteArray(clean.length / 2) { i ->
+            clean.substring(i * 2, i * 2 + 2).toInt(16).toByte()
+        }
+        synchronized(rxBuffer) { rxBuffer.clear() }
+        if (!send(bytes)) return emptyList()
+        delay(QUERY_SETTLE_MS)
+        return waitBytes(expectBytes, QUERY_TIMEOUT_MS)
+    }
+
+    // ── 状态轮询 ──────────────────────────────────────────────
+
+    private fun startPolling() {
+        stopPolling()
+        pollJob = scope.launch {
+            while (isActive) {
+                delay(POLL_INTERVAL_MS)
+                if (connected && !busy) {
+                    refreshAll()
+                }
+            }
+        }
+    }
+
+    private fun stopPolling() {
+        pollJob?.cancel()
+        pollJob = null
+    }
+
+    /** 释放连接（单例模式下不取消全局 scope，只清连接状态） */
+    fun close() {
+        stopPolling()
+        kotlinx.coroutines.runBlocking { disconnect() }
+    }
+}
+
+/** 打印结果 */
+data class PrintResult(val ok: Boolean, val message: String)
+
+/** 光栅数据 */
+data class RasterData(val widthBytes: Int, val height: Int, val data: ByteArray)
+
+/** X1 设备信息查询：设备名|MAC|MAC|固件版本|SN|电量 */
+val CMD_DEVICE_INFO = byteArrayOf(0x10, 0xFF.toByte(), 0x70)
+
+/** X1 固件版本查询：返回 "v3.38.21_AY" 这类 */
+val CMD_FW_X1 = byteArrayOf(0x10, 0xFF.toByte(), 0x31)

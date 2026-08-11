@@ -1,0 +1,21 @@
+# ── 签名与密钥（绝不能上传）──
+android/release.jks
+android/keystore-password.txt
+
+# ── 构建产物 ──
+android/build/
+android/app/build/
+android/.gradle/
+android/.kotlin/
+*.apk
+*.aab
+
+# ── IDE / 系统 ──
+.idea/
+*.iml
+.vscode/
+.DS_Store
+Thumbs.db
+
+# ── 日志 ──
+*.log
