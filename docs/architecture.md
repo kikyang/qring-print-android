@@ -142,19 +142,30 @@ STOP（复位）→ ENABLE（使能）→ 浓度 → 唤醒 → ESC@（解析器
 
 ---
 
-## 5. 错题卡和模板：把内容排版成一张图，再走图片通道
+## 5. 模板、错题卡与画布：把内容排版成一张图，再走图片通道
 
-错题卡 / 课程表 / 单词表 / 每日计划都不是"特殊打印"——
+错题卡 / 课程表 / 单词表 / 每日计划 / 口算题都不是"特殊打印"——
 它们是**先在内存里画好一张 384 点宽的位图**（Canvas 画文字、画线、画表格），
 然后走图片通道打印。好处：排版逻辑和打印逻辑完全解耦。
 
+**入口结构（v0.5.1 起）**：打印页顶部 5 个二级 Tab——
+文字 / 图片 / 条码 / 文档 / **其它**。「其它」Tab 收纳所有"模板类"功能：
+
 ```
-错题卡 = [题目图（可选，可多图拼接）+ 错因 + 知识点 + 订正/举一反三手写区]
-         画成一张 Bitmap → 走 4.2 图片通道
+其它 Tab
+ ├── 常用模板宫格（2×2 图标）：课程表 / 单词表 / 每日计划 / 口算题（一键生成 → 走图片通道）
+ └── 错题卡：题目图（可选，多图拼接 + 全套预处理）+ 错因 + 知识点 + 订正/举一反三手写区
 ```
 
 手写区横线设计成**练习本风格**（横线在格子底边，行高 10mm）——
 因为错题卡打印出来是给学生手写订正用的，行距不够会写不下。
+
+**图片页的两个"自绘"入口**（结果都加入图片通道统一预览/打印）：
+- **🖌 涂鸦**（`DrawCanvasView`）：白底黑笔手指绘图，路径列表管理（清空/撤销），转 384 宽位图
+- **📐 元素排版**（`CanvasLayout` + `CanvasEditor`）：文字 / 图片 / 条码元素自由拖拽排版、
+  缩放、置顶，可存为模板复用（模板 JSON 存 SharedPreferences，图片元素不持久化——
+  内容来自相册 URI，模板只存位置/尺寸/文字/条码参数）。核心设计：**逻辑坐标系 384 点宽**
+  （与打印头一致），预览和打印共用同一渲染管线（`CanvasEditor.render`），所见即所得。
 
 ---
 
@@ -171,6 +182,23 @@ STOP（复位）→ ENABLE（使能）→ 浓度 → 唤醒 → ESC@（解析器
 | 连接/解析进度反馈 | 连接进度条 + 阶段文案；文档解析转圈 + 已提取段/行计数，可取消 |
 | 文档解析竞态防护 | 新任务取消旧协程（大文件晚完成会覆盖新结果），CancellationException 不吞 |
 | BLE 分包 + 节奏控制 | 32B/包 + 80ms 间隔，防丢包；SPP 1024B/块 + 1ms |
+| **自动化测试（36 例）** | `gradle runUnitTests`：协议字节/抖动/Canny（纯 JVM）+ Robolectric 界面测试（启动/预览/画布/入口断言）。注意：Gradle Test worker 在中文路径下 classpath 失效，用 JavaExec 任务绕开（见 README） |
+| **R8 瘦身** | release 开 minify（AGP 8.5.2），APK 6.4MB → 0.87MB；zxing 自带 consumer rules，mapping 验证功能类全保留 |
+
+### 6.1 OTA 检查更新（v0.5.2 起）
+
+国内手机直连 GitHub API 不通（桌面有代理、App 没有），所以**检查与下载都走 jsDelivr**（国内可达的 GitHub CDN）：
+
+```
+我的 → 关于 → 检查更新
+  → jsDelivr data API（版本列表，主源；新 tag 收录滞后约 2-3h，属正常）
+      → 拿最新版本号 → 构造 jsDelivr CDN @v{版本} 下载 URL
+  → 下载 APK（@v tag 路径，tag 不可变 + 冷缓存秒级生效，无滞后）
+  → FileProvider 触发系统安装
+  fallback：仓库 version.json → GitHub API（海外）
+```
+
+发版流程固定为：bump 版本 → 测试 → 构建 → **APK 提交进仓库 `releases/`（.gitignore 加例外）+ version.json 更新** → push → gh release → 微信推送。实测教训：jsDelivr data API 的 tag 索引和 @main 分支指针缓存都不可靠（purge 不掉），**下载必须走 @v{tag} 路径**。
 
 ---
 
@@ -194,12 +222,24 @@ android/app/src/main/java/com/qring/print/
 ├── LegacyDocExtractor.kt     # 老格式 doc/xls（OLE2 复合文档解析）
 ├── TemplateBuilder.kt        # 错题卡模板（含手写区版式）
 ├── TemplateLibrary.kt        # 课程表/单词表/每日计划模板
+├── MathWorksheet.kt          # 口算题生成（随机算式 + 2 列大字号排版，借鉴 lztttt）
+├── DrawCanvasView.kt         # 画布涂鸦：手指绘图/清空/撤销 → 图片通道
+├── CanvasEditor.kt           # 元素排版：元素模型 + 384 宽渲染 + 模板 JSON 存取
+├── CanvasLayout.kt           # 元素排版视图：拖拽/命中检测/缩放/置顶
+├── UpdateManager.kt          # OTA：jsDelivr 检查 + 下载 + FileProvider 安装（GitHub fallback）
+├── BarcodeGenerator.kt       # 条码/二维码（zxing，QR + 7 种一维码，内容实时校验）
 ├── SelfTest.kt               # 打印测试页（浓度线/线条/灰阶渐变/文字）
 ├── Design.kt                 # UI 设计系统：微信小程序风（灰底白卡/微信绿/8px 圆角/线性图标）
 ├── MainActivity.kt           # 主界面：三 Tab（首页/打印/我的）+ 全部交互
 ├── DebugActivity.kt          # 调试台：收发 hex 日志/原始命令（藏于"我的→关于"）
 ├── PrintLog.kt               # 日志：内存环形缓冲 + 关键事件落盘
-└── HistoryStore.kt           # 打印历史（无损光栅重打 + 缩略图）
+├── HistoryStore.kt / HistoryActivity.kt  # 打印历史（无损光栅重打 + 缩略图）
+└── Settings.kt               # 打印设置持久化（浓度/走纸/连接模式/阈值/描边参数）
+
+test/ 目录（36 例，`gradle runUnitTests`）：
+├── QringProtocolTest.kt      # 协议字节/状态位/指令构造（15 例）
+├── DitherTest.kt / CannyTest.kt  # 抖动/边缘检测算法（13 例）
+└── MainActivityUiTest.kt     # Robolectric 界面测试（8 例：启动/图标文件/预览/排版/模板/入口）
 ```
 
 数据流一句话总结：
@@ -209,11 +249,14 @@ android/app/src/main/java/com/qring/print/
 
 ## 8. 已知边界
 
-- 验证过 **X1 机型两个通道**（本机 BLE 透传版 + 模拟 SPP 空壳验证）；同源 BY 系列理论兼容，未逐一验证
-- **SPP 版固件未真机验证**（手上只有 BLE 透传版）——AUTO 回退路径已按协议实现，等经典版机器实测
+- 验证过 **X1 机型两个通道**：BLE 透传版（本机，全功能）+ 经典蓝牙 SPP（2026-08-11 真机验证：
+  能打印出纸正常，查询无响应属单向通道特性）；同源 BY 系列理论兼容，未逐一验证
 - 浓度范围 X1 是 0~2（其他机型可能不同，如 Windows 版提到 0~7）
 - 老格式 .doc/.xls 提取是简化实现（.doc 复杂分片/文本框不提取；.xls 只取字符串表不还原行列），复杂文档建议转存 docx/xlsx
 - 打印头电流限制导致全黑大块显色偏淡是硬件特性，非软件可完全修复
+- **OTA 的 jsDelivr 收录延迟**：发版后 2-3 小时内 App 检查更新可能仍提示已是最新（data API 收录滞后，见 6.1）
+- Robolectric 的运行时 assets 加载在 AGP 8.5 + Robolectric 4.11 下有兼容问题（FileNotFound）——
+  图标类测试走文件系统断言绕开；升级 Robolectric 后可改回运行时断言
 - 官方 App 生态已死，本客户端是社区替代方案，与学科网无关联
 
 ---
