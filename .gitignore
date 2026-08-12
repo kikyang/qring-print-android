@@ -20,3 +20,7 @@ Thumbs.db
 # ── 日志 ──
 *.log
 dev-log/
+
+# ── OTA 发布 APK（jsDelivr 拉取用，需进仓库）──
+!releases/
+!releases/*.apk

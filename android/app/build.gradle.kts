@@ -11,8 +11,8 @@ android {
         applicationId = "com.qring.print"
         minSdk = 33          // Android 13+：BLE 新 API（旧 API 在 SDK34 编译时 HIDDEN）
         targetSdk = 34
-        versionCode = 8
-        versionName = "0.5.2"
+        versionCode = 9
+        versionName = "0.5.3"
     }
 
     // 正式签名（2026-08-11 生成 release.jks；密码在 android/keystore-password.txt）。
@@ -74,7 +74,9 @@ tasks.register<JavaExec>("runUnitTests") {
     group = "verification"
     description = "运行 JVM 单元测试（JUnitCore，绕开中文路径 worker 问题）"
     // JavaExec 不自动编译测试——先编译 test 源集
-    dependsOn("compileDebugUnitTestKotlin")
+    // 资源任务也不能少：Robolectric 需要 merged assets（icons/*.png）与资源表，
+    // 否则 Design.Icons.bitmap 加载失败并缓存 null（2026-08-12 图标测试暴露）
+    dependsOn("compileDebugUnitTestKotlin", "mergeDebugAssets", "processDebugResources")
     // debugUnitTestRuntimeClasspath 含 main 类输出 + junit 依赖；测试类目录 + android.jar 单独加
     // （AGP 8.5.2 在 Gradle 8.7 下 unitTest classpath 不带 android.jar，Robolectric 需要——2026-08-12 实测）
     val androidJar = files("${android.sdkDirectory.path}/platforms/android-${android.compileSdk}/android.jar")
@@ -104,7 +106,14 @@ tasks.register<JavaExec>("runUnitTests") {
             }
         )
     }
-    jvmArgs("-Drobolectric.dependency.repo.url=https://maven.aliyun.com/repository/public")
+    jvmArgs(
+        "-Drobolectric.dependency.repo.url=https://maven.aliyun.com/repository/public",
+        // AGP 8.5 的 assets/res 输出路径与 Robolectric 4.11 默认探测不同——显式指定
+        // （2026-08-12 图标测试暴露：不设则 Design.Icons.bitmap 加载 assets 失败并缓存 null）
+        "-Dandroid_merged_assets=" + layout.buildDirectory.dir("intermediates/assets/debug/mergeDebugAssets").get().asFile.absolutePath,
+        "-Dandroid.merged_assets=" + layout.buildDirectory.dir("intermediates/assets/debug/mergeDebugAssets").get().asFile.absolutePath,
+        "-Dandroid_merged_resources=" + layout.buildDirectory.dir("intermediates/merged_res/debug/mergeDebugResources").get().asFile.absolutePath,
+    )
     args(
         "com.qring.print.QringProtocolTest",
         "com.qring.print.DitherTest",

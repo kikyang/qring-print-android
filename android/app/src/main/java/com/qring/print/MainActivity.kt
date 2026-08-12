@@ -902,24 +902,32 @@ class MainActivity : Activity() {
         col.addView(Design.card {
             addView(Design.sectionTitle("常用模板"))
             addView(Design.caption("一键生成 · 课程表 / 单词表 / 每日计划 / 口算题"))
-            fun tplBtn(label: String, action: () -> Unit): Button =
-                Design.outlineButton(label).also { it.setOnClickListener { action() } }
-            val row1 = Design.row()
-            row1.addView(tplBtn("📅 课程表", { printTemplate { TemplateLibrary.courseTable() } }),
-                LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-            row1.addView(tplBtn("📖 单词表", { printTemplate { TemplateLibrary.wordList() } }),
-                LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = Design.dp(8) })
-            addView(row1, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                topMargin = Design.dp(8)
-            })
-            val row2 = Design.row()
-            row2.addView(tplBtn("🗓 每日计划", { printTemplate { TemplateLibrary.dailyPlan() } }),
-                LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-            row2.addView(tplBtn("🧮 口算题", { showMathDialog() }),
-                LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = Design.dp(8) })
-            addView(row2, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                topMargin = Design.dp(8)
-            })
+            // 2×2 图标宫格（与首页「常用功能」同款视觉，2026-08-12 改：文字按钮行太生硬）
+            data class Tpl(val icon: String, val label: String, val action: () -> Unit)
+            val tpls = arrayOf(
+                Tpl("course", "课程表", { printTemplate { TemplateLibrary.courseTable() } }),
+                Tpl("word", "单词表", { printTemplate { TemplateLibrary.wordList() } }),
+                Tpl("plan", "每日计划", { printTemplate { TemplateLibrary.dailyPlan() } }),
+                Tpl("math", "口算题", { showMathDialog() }),
+            )
+            for (i in tpls.indices step 2) {
+                val t1 = tpls[i]
+                val t2 = tpls.getOrNull(i + 1)
+                addView(Design.row {
+                    addView(gridItem(t1.icon, t1.label, t1.action),
+                        LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                    if (t2 != null) {
+                        addView(gridItem(t2.icon, t2.label, t2.action),
+                            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                                marginStart = Design.dp(10)
+                            })
+                    }
+                }.also {
+                    it.layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                        topMargin = Design.dp(4)
+                    }
+                })
+            }
         })
 
         // 错题卡（原独立 Tab，2026-08-12 并入其它页）

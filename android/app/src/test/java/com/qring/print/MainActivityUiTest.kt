@@ -1,5 +1,6 @@
 package com.qring.print
 
+import java.io.File
 import android.os.Looper
 import android.view.View
 import android.view.ViewGroup
@@ -8,6 +9,7 @@ import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.RadioButton
+import android.widget.RadioGroup
 import android.widget.TextView
 import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.assertEquals
@@ -110,8 +112,31 @@ class MainActivityUiTest {
         idle()
         assertNotNull("常用模板标题", findText(root, "常用模板"))
         assertNotNull("错题卡入口标题", findText(root, "错题卡打印"))
-        assertNotNull("课程表按钮", findText(root, "📅 课程表"))
-        assertNotNull("口算题按钮", findText(root, "🧮 口算题"))
+        // 模板宫格（2×2 图标，label 无 emoji）
+        for (label in listOf("课程表", "单词表", "每日计划", "口算题")) {
+            assertNotNull("模板宫格「$label」应存在", findText(root, label))
+        }
+    }
+
+    @Test
+    fun `五个二级Tab的图标文件都存在`() {
+        // 回归（2026-08-12 用户反馈「其它」Tab 无图标）：subTab 引用 icons/<name>.png，
+        // 文件缺失时 Design.Icons.bitmap 返回 null 且静默跳过图标——测试直接断言文件存在。
+        // （Robolectric 的运行时 assets 加载在 AGP 8.5 + Robolectric 4.11 下有兼容问题
+        //   FileNotFound，运行时断言暂不可用——见全局记忆 env-robolectric-cn-setup）
+        val cwd = File(System.getProperty("user.dir") ?: ".")
+        val iconsDir = listOf(
+            File(cwd, "src/main/assets/icons"),
+            File(cwd, "app/src/main/assets/icons"),
+        ).firstOrNull { it.isDirectory }
+        assertNotNull("找不到 icons 目录（cwd=$cwd）", iconsDir)
+        for (name in listOf("text", "image", "barcode", "doc", "template")) {
+            assertTrue("缺图标文件 icons/$name.png（Tab 将无图标）", File(iconsDir, "$name.png").exists())
+        }
+        // 首页宫格图标（template 同时用于首页「其它打印」格子）
+        for (name in listOf("template", "history", "home", "print", "person")) {
+            assertTrue("缺图标文件 icons/$name.png", File(iconsDir, "$name.png").exists())
+        }
     }
 
     @Test
