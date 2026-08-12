@@ -3,6 +3,7 @@ package com.qring.print
 import android.Manifest
 import android.app.Activity
 import android.app.AlertDialog
+import android.app.Dialog
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.le.ScanCallback
@@ -20,15 +21,18 @@ import android.text.Editable
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
 import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.Button
 import android.widget.RadioButton
 import android.widget.RadioGroup
 import android.widget.ScrollView
 import android.widget.SeekBar
 import android.widget.TextView
+import android.widget.Toast
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CoroutineScope
@@ -61,9 +65,23 @@ class MainActivity : Activity() {
     // 打印页二级切换
     private lateinit var subTabText: RadioButton
     private lateinit var subTabImage: RadioButton
-    private lateinit var subTabCard: RadioButton
+    private lateinit var subTabOther: RadioButton
     private lateinit var subTabBarcode: RadioButton
     private lateinit var subTabDoc: RadioButton
+    // 画布区（自定义元素排版 2026-08-12，合成自 bzhou830/snowboys/lztttt；
+    // 2026-08-12 晚并入图片页：Dialog 入口，结果加入图片通道，不再占顶部 Tab）
+    private lateinit var canvasLayout: CanvasLayout
+    private lateinit var canvasEditorCard: LinearLayout
+    private lateinit var canvasEditorTitle: TextView
+    private lateinit var canvasStatus: TextView
+    /** 元素排版 Dialog（加入图片后关闭） */
+    private var layoutDialog: Dialog? = null
+    private lateinit var canvasEditText: EditText
+    private lateinit var canvasFontBar: SeekBar
+    private lateinit var canvasBoldCheck: CheckBox
+    private lateinit var canvasBarcodeTypeGroup: RadioGroup
+    private lateinit var canvasBarcodeInput: EditText
+    private lateinit var canvasBarcodeHint: TextView
     // 条码区
     private lateinit var barcodeInput: EditText
     private lateinit var barcodeHint: TextView
@@ -126,6 +144,8 @@ class MainActivity : Activity() {
     private lateinit var textContent: LinearLayout
     private lateinit var imageContent: LinearLayout
     private lateinit var cardContent: LinearLayout
+    /** 其它页（模板 + 错题卡，2026-08-12 合并） */
+    private lateinit var otherContent: LinearLayout
     private lateinit var barcodeContent: LinearLayout
     private lateinit var docContent: LinearLayout
     private lateinit var tabHome: LinearLayout
@@ -139,6 +159,7 @@ class MainActivity : Activity() {
     private val REQ_BT = 1001
     private val REQ_IMAGE = 1002
     private val REQ_DOC = 1003
+    private val REQ_CANVAS_IMAGE = 1004
 
     companion object {
         const val PAGE_HOME = 0
@@ -335,7 +356,7 @@ class MainActivity : Activity() {
                 outlineCheck.isChecked = true
                 snapshot(printPage, "page_print_image_outline.png")
                 outlineCheck.isChecked = false
-                subTabCard.isChecked = true
+                subTabOther.isChecked = true
                 snapshot(printPage, "page_print_card.png")
                 subTabBarcode.isChecked = true
                 snapshot(printPage, "page_print_barcode.png")
@@ -477,13 +498,9 @@ class MainActivity : Activity() {
         val grid = arrayOf(
             GridEntry("text", "文字打印", { switchPage(PAGE_PRINT); subTabText.isChecked = true; input.requestFocus() }),
             GridEntry("image", "图片打印", { switchPage(PAGE_PRINT); subTabImage.isChecked = true }),
-            GridEntry("card", "错题卡", { switchPage(PAGE_PRINT); subTabCard.isChecked = true }),
             GridEntry("barcode", "条码打印", { switchPage(PAGE_PRINT); subTabBarcode.isChecked = true }),
             GridEntry("doc", "文档打印", { switchPage(PAGE_PRINT); subTabDoc.isChecked = true }),
-            GridEntry("course", "课程表", { printTemplate { TemplateLibrary.courseTable() } }),
-            GridEntry("word", "单词表", { printTemplate { TemplateLibrary.wordList() } }),
-            GridEntry("plan", "每日计划", { printTemplate { TemplateLibrary.dailyPlan() } }),
-            GridEntry("math", "口算题", { showMathDialog() }),
+            GridEntry("template", "其它打印", { switchPage(PAGE_PRINT); subTabOther.isChecked = true }),
             GridEntry("history", "打印历史", { startActivity(Intent(this@MainActivity, HistoryActivity::class.java)) }),
         )
         for (i in grid.indices step 2) {
@@ -583,39 +600,39 @@ class MainActivity : Activity() {
         }
         subTabText = subTab("文字", "text")
         subTabImage = subTab("图片", "image")
-        subTabCard = subTab("错题卡", "card")
         subTabBarcode = subTab("条码", "barcode")
         subTabDoc = subTab("文档", "doc")
+        subTabOther = subTab("其它", "template")
         subGroup.addView(subTabText, RadioGroup.LayoutParams(0, RadioGroup.LayoutParams.WRAP_CONTENT, 1f))
         subGroup.addView(subTabImage, RadioGroup.LayoutParams(0, RadioGroup.LayoutParams.WRAP_CONTENT, 1f))
-        subGroup.addView(subTabCard, RadioGroup.LayoutParams(0, RadioGroup.LayoutParams.WRAP_CONTENT, 1f))
         subGroup.addView(subTabBarcode, RadioGroup.LayoutParams(0, RadioGroup.LayoutParams.WRAP_CONTENT, 1f))
         subGroup.addView(subTabDoc, RadioGroup.LayoutParams(0, RadioGroup.LayoutParams.WRAP_CONTENT, 1f))
+        subGroup.addView(subTabOther, RadioGroup.LayoutParams(0, RadioGroup.LayoutParams.WRAP_CONTENT, 1f))
         subGroup.setOnCheckedChangeListener { _, checkedId ->
             // 切页：只显示当前功能内容，互不掺和
             textContent.visibility = if (checkedId == subTabText.id) View.VISIBLE else View.GONE
             imageContent.visibility = if (checkedId == subTabImage.id) View.VISIBLE else View.GONE
-            cardContent.visibility = if (checkedId == subTabCard.id) View.VISIBLE else View.GONE
             barcodeContent.visibility = if (checkedId == subTabBarcode.id) View.VISIBLE else View.GONE
             docContent.visibility = if (checkedId == subTabDoc.id) View.VISIBLE else View.GONE
+            otherContent.visibility = if (checkedId == subTabOther.id) View.VISIBLE else View.GONE
             // 着色
-            listOf(subTabText, subTabImage, subTabCard, subTabBarcode, subTabDoc).forEach {
+            listOf(subTabText, subTabImage, subTabBarcode, subTabDoc, subTabOther).forEach {
                 it.setTextColor(if (it.id == checkedId) Design.PRIMARY else Design.TEXT_SUB)
             }
         }
         page.addView(subGroup)
 
-        // 五个功能内容块（独立构建，visibility 切换）
+        // 五个功能内容块（独立构建，visibility 切换；其它 = 模板 + 错题卡）
         textContent = buildTextContent()
         imageContent = buildImageContent()
-        cardContent = buildCardContent()
         barcodeContent = buildBarcodeContent()
         docContent = buildDocContent()
+        otherContent = buildOtherContent()
         page.addView(textContent)
         page.addView(imageContent)
-        page.addView(cardContent)
         page.addView(barcodeContent)
         page.addView(docContent)
+        page.addView(otherContent)
         // 默认文字页
         subTabText.isChecked = true
         return scroll
@@ -689,14 +706,18 @@ class MainActivity : Activity() {
             addView(Design.caption("多选图可拼接省纸；消除笔去批改痕迹；增强处理拍试卷"))
             addView(Design.row {
                 val pickBtn = Design.outlineButton("🖼 选图")
-                val canvasBtn = Design.outlineButton("🖌 画布")
+                val canvasBtn = Design.outlineButton("🖌 涂鸦")
+                val layoutBtn = Design.outlineButton("📐 排版")
                 val clearBtn = Design.ghostButton("清除")
                 addView(pickBtn, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
                 addView(canvasBtn, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                    marginStart = Design.dp(8)
+                    marginStart = Design.dp(6)
+                })
+                addView(layoutBtn, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    marginStart = Design.dp(6)
                 })
                 addView(clearBtn, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                    marginStart = Design.dp(8)
+                    marginStart = Design.dp(6)
                 })
                 pickBtn.setOnClickListener {
                     val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
@@ -707,6 +728,8 @@ class MainActivity : Activity() {
                 }
                 // 画布涂鸦（2026-08-11 借鉴 lztttt，并入图片通道）
                 canvasBtn.setOnClickListener { showCanvasDialog() }
+                // 元素排版（2026-08-12 合成，Dialog 并入图片通道）
+                layoutBtn.setOnClickListener { showLayoutDialog() }
                 clearBtn.setOnClickListener {
                     selectedImages.clear()
                     imagePreview.setImageDrawable(null)
@@ -872,6 +895,39 @@ class MainActivity : Activity() {
     }
 
     // ── 错题卡内容块 ──
+    // ── 其它内容块（常用模板 + 错题卡，2026-08-12 合并，替换原 错题卡/课程表/单词表/每日计划/口算题 分散入口）──
+    private fun buildOtherContent(): LinearLayout {
+        val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+
+        col.addView(Design.card {
+            addView(Design.sectionTitle("常用模板"))
+            addView(Design.caption("一键生成 · 课程表 / 单词表 / 每日计划 / 口算题"))
+            fun tplBtn(label: String, action: () -> Unit): Button =
+                Design.outlineButton(label).also { it.setOnClickListener { action() } }
+            val row1 = Design.row()
+            row1.addView(tplBtn("📅 课程表", { printTemplate { TemplateLibrary.courseTable() } }),
+                LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            row1.addView(tplBtn("📖 单词表", { printTemplate { TemplateLibrary.wordList() } }),
+                LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = Design.dp(8) })
+            addView(row1, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = Design.dp(8)
+            })
+            val row2 = Design.row()
+            row2.addView(tplBtn("🗓 每日计划", { printTemplate { TemplateLibrary.dailyPlan() } }),
+                LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            row2.addView(tplBtn("🧮 口算题", { showMathDialog() }),
+                LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = Design.dp(8) })
+            addView(row2, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = Design.dp(8)
+            })
+        })
+
+        // 错题卡（原独立 Tab，2026-08-12 并入其它页）
+        cardContent = buildCardContent()
+        col.addView(cardContent)
+        return col
+    }
+
     private fun buildCardContent(): LinearLayout {
         val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
 
@@ -1125,6 +1181,395 @@ class MainActivity : Activity() {
     }
 
     /** 条码打印：预览确认 → 图片通道（m=2 + 行合并） */
+    // ── 元素排版编辑器（2026-08-12，合成自 bzhou830/snowboys/lztttt；
+    //    2026-08-12 晚并入图片页：Dialog 打开，结果加入图片通道打印）──
+    private fun buildLayoutEditor(): LinearLayout {
+        val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+
+        col.addView(Design.card {
+            addView(Design.sectionTitle("元素排版"))
+            addView(Design.caption("文字 / 图片 / 条码自由排版，拖拽摆放 · 完成后加入图片通道打印"))
+            val toolRow = Design.row()
+            val addTextBtn = Design.ghostButton("＋ 文字")
+            val addImageBtn = Design.ghostButton("＋ 图片")
+            val addBarcodeBtn = Design.ghostButton("＋ 条码")
+            toolRow.addView(addTextBtn, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            toolRow.addView(addImageBtn, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                marginStart = Design.dp(8)
+            })
+            toolRow.addView(addBarcodeBtn, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                marginStart = Design.dp(8)
+            })
+            val clearBtn = Design.ghostButton("清空")
+            toolRow.addView(clearBtn, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                marginStart = Design.dp(8)
+            })
+            addView(toolRow, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = Design.dp(8)
+            })
+
+            addTextBtn.setOnClickListener {
+                canvasLayout.addElement(CanvasElement(CanvasElement.KIND_TEXT, 0f, 0f, 280f, 48f).apply {
+                    text = "双击编辑文字"
+                    fontSize = 24f
+                })
+                refreshCanvasEditor()
+            }
+            addImageBtn.setOnClickListener {
+                val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
+                    type = "image/*"
+                }
+                startActivityForResult(intent, REQ_CANVAS_IMAGE)
+            }
+            addBarcodeBtn.setOnClickListener {
+                canvasLayout.addElement(CanvasElement(CanvasElement.KIND_BARCODE, 0f, 0f, 200f, 120f).apply {
+                    barcodeContent = "https://github.com/kikyang/qring-print-android"
+                })
+                refreshCanvasEditor()
+            }
+            clearBtn.setOnClickListener {
+                if (canvasLayout.elements.isEmpty()) return@setOnClickListener
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle("清空画布")
+                    .setMessage("将删除所有元素，确定？")
+                    .setPositiveButton("清空") { _, _ -> canvasLayout.clear(); refreshCanvasEditor() }
+                    .setNegativeButton("取消", null)
+                    .show()
+            }
+        })
+
+        col.addView(Design.card {
+            canvasLayout = CanvasLayout(this@MainActivity).apply {
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    Design.dp(240)
+                )
+                onSelect = { refreshCanvasEditor() }
+            }
+            addView(canvasLayout)
+            canvasStatus = TextView(this@MainActivity).apply {
+                text = "点按选中元素，拖动调整位置"
+                textSize = 12f
+                setTextColor(Design.TEXT_SUB)
+                setPadding(0, Design.dp(6), 0, 0)
+            }
+            addView(canvasStatus)
+        })
+
+        // 选中元素编辑面板（未选中时隐藏）
+        canvasEditorCard = Design.card().apply {
+            addView(Design.sectionTitle("编辑元素").also { title ->
+                canvasEditorTitle = title
+            })
+
+            // 文字：内容 / 字号 / 加粗
+            canvasEditText = EditText(this@MainActivity).apply {
+                hint = "文字内容"
+                textSize = 14f
+                setTextColor(Design.ON_SURFACE)
+                setHintTextColor(Design.TEXT_SUB)
+                setOnFocusChangeListener { _, hasFocus ->
+                    if (!hasFocus) syncCanvasTextElement()
+                }
+            }
+            addView(canvasEditText, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+            val fontRow = Design.row()
+            fontRow.addView(TextView(this@MainActivity).apply {
+                text = "字号"
+                textSize = 13f
+                setTextColor(Design.ON_SURFACE)
+            })
+            canvasFontBar = SeekBar(this@MainActivity).apply {
+                max = 48 - 12
+                progress = 24 - 12
+                setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
+                    override fun onProgressChanged(sb: SeekBar, progress: Int, fromUser: Boolean) {
+                        val el = canvasLayout.selected
+                        if (el != null && el.kind == CanvasElement.KIND_TEXT) {
+                            el.fontSize = (progress + 12).toFloat()
+                            canvasLayout.invalidate()
+                        }
+                    }
+                    override fun onStartTrackingTouch(sb: SeekBar) {}
+                    override fun onStopTrackingTouch(sb: SeekBar) {}
+                })
+            }
+            fontRow.addView(canvasFontBar, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                marginStart = Design.dp(8)
+            })
+            addView(fontRow)
+            canvasBoldCheck = Design.check("加粗").apply {
+                setOnCheckedChangeListener { _, checked ->
+                    val el = canvasLayout.selected
+                    if (el != null && el.kind == CanvasElement.KIND_TEXT) {
+                        el.bold = checked
+                        canvasLayout.invalidate()
+                    }
+                }
+            }
+            addView(canvasBoldCheck)
+
+            // 条码：类型 / 内容
+            canvasBarcodeTypeGroup = RadioGroup(this@MainActivity).apply {
+                orientation = RadioGroup.HORIZONTAL
+            }
+            for (type in BarcodeGenerator.TYPES) {
+                val rb = RadioButton(this@MainActivity).apply {
+                    text = type.label
+                    textSize = 11f
+                    isAllCaps = false
+                    setButtonDrawable(android.R.color.transparent)
+                    minHeight = Design.dp(30)
+                    setOnCheckedChangeListener { _, checked ->
+                        if (checked) {
+                            canvasLayout.selected?.barcodeType = type
+                            canvasLayout.invalidate()
+                        }
+                    }
+                }
+                canvasBarcodeTypeGroup.addView(rb)
+            }
+            addView(canvasBarcodeTypeGroup)
+            canvasBarcodeInput = EditText(this@MainActivity).apply {
+                hint = "条码内容"
+                textSize = 14f
+                setTextColor(Design.ON_SURFACE)
+                setHintTextColor(Design.TEXT_SUB)
+                setOnFocusChangeListener { _, hasFocus ->
+                    if (!hasFocus) syncCanvasBarcodeElement()
+                }
+            }
+            addView(canvasBarcodeInput, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = Design.dp(4)
+            })
+            canvasBarcodeHint = TextView(this@MainActivity).apply {
+                textSize = 11f
+                setTextColor(Design.TEXT_SUB)
+            }
+            addView(canvasBarcodeHint)
+
+            // 通用操作：放大 / 缩小 / 置顶 / 删除
+            val opRow = Design.row()
+            fun opBtn(label: String, action: () -> Unit): Button =
+                Design.ghostButton(label).also { it.setOnClickListener { action() } }
+            opRow.addView(opBtn("放大", { canvasLayout.scaleSelected(1.1f) }),
+                LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            opRow.addView(opBtn("缩小", { canvasLayout.scaleSelected(0.9f) }),
+                LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = Design.dp(6) })
+            opRow.addView(opBtn("置顶", { canvasLayout.toFront() }),
+                LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = Design.dp(6) })
+            opRow.addView(opBtn("删除", {
+                canvasLayout.removeSelected()
+                refreshCanvasEditor()
+            }),
+                LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = Design.dp(6) })
+            addView(opRow, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = Design.dp(8)
+            })
+        }
+        canvasEditorCard.visibility = View.GONE
+        col.addView(canvasEditorCard)
+
+        col.addView(Design.card {
+            val saveBtn = Design.outlineButton("💾 存为模板")
+            val loadBtn = Design.outlineButton("📂 加载模板")
+            val addBtn = Design.primaryButton("✅ 加入图片（预览确认）")
+            val row = Design.row()
+            row.addView(saveBtn, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            row.addView(loadBtn, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                marginStart = Design.dp(8)
+            })
+            addView(row)
+            addView(addBtn, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = Design.dp(8)
+            })
+            saveBtn.setOnClickListener { saveCanvasTemplate() }
+            loadBtn.setOnClickListener { loadCanvasTemplate() }
+            addBtn.setOnClickListener { doAddCanvasToImage() }
+        })
+
+        return col
+    }
+
+    /** 元素排版 Dialog（与涂鸦一致：图片页入口，全屏编辑） */
+    private fun showLayoutDialog() {
+        val content = buildLayoutEditor()
+        val scroll = ScrollView(this).apply { addView(content) }
+        layoutDialog = Dialog(this).apply {
+            setTitle("📐 元素排版")
+            setContentView(scroll)
+            window?.setLayout(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        }
+        layoutDialog?.show()
+    }
+
+    /** 排版结果加入图片通道（预览确认 → selectedImages → 图片页统一打印） */
+    private fun doAddCanvasToImage() {
+        if (canvasLayout.elements.isEmpty()) {
+            Toast.makeText(this, "画布是空的，先添加元素", Toast.LENGTH_SHORT).show()
+            return
+        }
+        scope.launch {
+            try {
+                val bmp = CanvasEditor.render(canvasLayout.elements)
+                val raster = RasterEncoder.encode(bmp, DitherMode.NONE, RasterEncoder.THRESHOLD_IMAGE)
+                val previewBmp = imagePreviewRaster(raster)
+                val desc = "${raster.widthBytes * 8}×${raster.height} 点，约 ${"%.0f".format(raster.height / 8.0)}mm 高"
+                previewConfirmDialog("确认加入排版画布（$desc）", previewBmp) {
+                    selectedImages.add(bmp)
+                    updateThumbnail()
+                    layoutDialog?.dismiss()
+                    imageStatus.text = "已加入排版画布（共 ${selectedImages.size} 张图）"
+                }
+            } catch (e: Exception) {
+                PrintLog.event("排版画布异常: ${e.javaClass.simpleName}: ${e.message}")
+                Toast.makeText(this@MainActivity, "排版生成失败：${e.message}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    /** 选中元素变化 → 刷新编辑面板（文字/条码控件与元素双向同步） */
+    private fun refreshCanvasEditor() {
+        val el = canvasLayout.selected
+        if (el == null) {
+            canvasEditorCard.visibility = View.GONE
+            return
+        }
+        canvasEditorCard.visibility = View.VISIBLE
+        canvasEditorTitle.text = when (el.kind) {
+            CanvasElement.KIND_TEXT -> "编辑文字元素"
+            CanvasElement.KIND_IMAGE -> "编辑图片元素"
+            else -> "编辑条码元素"
+        }
+        canvasEditText.visibility = if (el.kind == CanvasElement.KIND_TEXT) View.VISIBLE else View.GONE
+        canvasFontBar.visibility = if (el.kind == CanvasElement.KIND_TEXT) View.VISIBLE else View.GONE
+        canvasBoldCheck.visibility = if (el.kind == CanvasElement.KIND_TEXT) View.VISIBLE else View.GONE
+        canvasBarcodeTypeGroup.visibility = if (el.kind == CanvasElement.KIND_BARCODE) View.VISIBLE else View.GONE
+        canvasBarcodeInput.visibility = if (el.kind == CanvasElement.KIND_BARCODE) View.VISIBLE else View.GONE
+        canvasBarcodeHint.visibility = if (el.kind == CanvasElement.KIND_BARCODE) View.VISIBLE else View.GONE
+        if (el.kind == CanvasElement.KIND_TEXT) {
+            canvasEditText.setText(el.text)
+            canvasFontBar.progress = (el.fontSize.toInt() - 12).coerceIn(0, 36)
+            canvasBoldCheck.isChecked = el.bold
+        } else if (el.kind == CanvasElement.KIND_BARCODE) {
+            val idx = BarcodeGenerator.TYPES.indexOf(el.barcodeType).coerceAtLeast(0)
+            val rb = canvasBarcodeTypeGroup.getChildAt(idx)
+            if (rb is RadioButton && !rb.isChecked) rb.isChecked = true
+            canvasBarcodeInput.setText(el.barcodeContent)
+            updateCanvasBarcodeHint(el)
+        }
+    }
+
+    private fun syncCanvasTextElement() {
+        val el = canvasLayout.selected ?: return
+        if (el.kind != CanvasElement.KIND_TEXT) return
+        el.text = canvasEditText.text.toString()
+        canvasLayout.invalidate()
+    }
+
+    private fun syncCanvasBarcodeElement() {
+        val el = canvasLayout.selected ?: return
+        if (el.kind != CanvasElement.KIND_BARCODE) return
+        el.barcodeContent = canvasBarcodeInput.text.toString().trim()
+        updateCanvasBarcodeHint(el)
+        canvasLayout.invalidate()
+    }
+
+    private fun updateCanvasBarcodeHint(el: CanvasElement) {
+        if (el.barcodeContent.isEmpty()) {
+            canvasBarcodeHint.text = "请输入条码内容"
+            canvasBarcodeHint.setTextColor(Design.TEXT_SUB)
+            return
+        }
+        val err = BarcodeGenerator.validate(el.barcodeType, el.barcodeContent)
+        canvasBarcodeHint.text = err ?: "✓ 内容有效"
+        canvasBarcodeHint.setTextColor(if (err == null) Design.PRIMARY else Design.ERROR)
+    }
+
+    /** 存模板：输入名称（有同名弹覆盖确认） */
+    private fun saveCanvasTemplate() {
+        if (canvasLayout.elements.isEmpty()) {
+            Toast.makeText(this, "画布是空的", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val input = EditText(this).apply {
+            hint = "模板名称（如：单词卡）"
+            textSize = 14f
+        }
+        AlertDialog.Builder(this)
+            .setTitle("存为模板")
+            .setView(input)
+            .setPositiveButton("保存") { _, _ ->
+                val name = input.text.toString().trim()
+                if (name.isEmpty()) {
+                    Toast.makeText(this, "名称不能为空", Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+                if (CanvasEditor.templateNames(this).contains(name)) {
+                    AlertDialog.Builder(this)
+                        .setTitle("模板已存在")
+                        .setMessage("「$name」已存在，覆盖？")
+                        .setPositiveButton("覆盖") { _, _ ->
+                            if (CanvasEditor.saveTemplate(this, name, canvasLayout.elements)) {
+                                Toast.makeText(this, "已保存「$name」", Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(this, "保存失败（图片元素不会保存）", Toast.LENGTH_LONG).show()
+                            }
+                        }
+                        .setNegativeButton("取消", null)
+                        .show()
+                } else {
+                    CanvasEditor.saveTemplate(this, name, canvasLayout.elements)
+                    Toast.makeText(this, "已保存「$name」", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    /** 加载模板：列表选择（可长按删除） */
+    private fun loadCanvasTemplate() {
+        val names = CanvasEditor.templateNames(this)
+        if (names.isEmpty()) {
+            Toast.makeText(this, "还没有模板，先画一个存起来吧", Toast.LENGTH_LONG).show()
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle("加载模板")
+            .setItems(names.toTypedArray()) { _, which ->
+                val name = names[which]
+                val els = CanvasEditor.loadTemplate(this, name)
+                canvasLayout.clear()
+                canvasLayout.elements.addAll(els)
+                canvasLayout.invalidate()
+                refreshCanvasEditor()
+                Toast.makeText(this, "已加载「$name」（图片元素需重新添加）", Toast.LENGTH_SHORT).show()
+            }
+            .setNeutralButton("管理模板", { _, _ ->
+                if (names.isEmpty()) return@setNeutralButton
+                AlertDialog.Builder(this)
+                    .setTitle("管理模板")
+                    .setItems(names.toTypedArray()) { _, which ->
+                        val name = names[which]
+                        AlertDialog.Builder(this)
+                            .setMessage("删除模板「$name」？")
+                            .setPositiveButton("删除") { _, _ ->
+                                CanvasEditor.deleteTemplate(this, name)
+                                Toast.makeText(this, "已删除", Toast.LENGTH_SHORT).show()
+                            }
+                            .setNegativeButton("取消", null)
+                            .show()
+                    }
+                    .show()
+            })
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    /** 画布打印：合成 → 阈值编码（条码页同管线）→ 预览确认 → 打印 */
     // ── 文档内容块（PDF / Word / Excel，2026-08-11 加）──
     private fun buildDocContent(): LinearLayout {
         val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
@@ -1444,8 +1889,18 @@ class MainActivity : Activity() {
                 setPadding(0, Design.dp(8), 0, 0)
                 setOnClickListener { startActivity(Intent(this@MainActivity, DebugActivity::class.java)) }
             }
+            val updateLink = TextView(this@MainActivity).apply {
+                text = "检查更新"
+                textSize = 11f
+                setTextColor(Design.TEXT_SUB)
+                setPadding(0, Design.dp(8), 0, 0)
+                setOnClickListener { checkForUpdate() }
+            }
             hiddenRow.addView(selfTestLink)
             hiddenRow.addView(debugLink, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                marginStart = Design.dp(16)
+            })
+            hiddenRow.addView(updateLink, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
                 marginStart = Design.dp(16)
             })
             addView(hiddenRow)
@@ -1515,6 +1970,20 @@ class MainActivity : Activity() {
                 loadImage(uri)?.let { selectedImages.add(it) }
             }
             updateThumbnail()
+        }
+        // 画布：选一张图作为画布元素（2026-08-12）
+        if (requestCode == REQ_CANVAS_IMAGE && resultCode == RESULT_OK) {
+            val uri = data?.data ?: return
+            val bmp = loadImage(uri) ?: return
+            // 等比缩到 384 宽内（画布逻辑坐标），避免原图过大拖慢渲染
+            val scale = minOf(1f, CanvasEditor.WIDTH.toFloat() / bmp.width)
+            val w = (bmp.width * scale).toInt().coerceAtLeast(1)
+            val h = (bmp.height * scale).toInt().coerceAtLeast(1)
+            val scaled = android.graphics.Bitmap.createScaledBitmap(bmp, w, h, true)
+            canvasLayout.addElement(CanvasElement(CanvasElement.KIND_IMAGE, 0f, 0f, scaled.width.toFloat(), scaled.height.toFloat()).apply {
+                image = scaled
+            })
+            refreshCanvasEditor()
         }
         // 文档（PDF / Word / Excel）：选中即异步解析 + 预览
         if (requestCode == REQ_DOC && resultCode == RESULT_OK) {
@@ -2310,6 +2779,65 @@ class MainActivity : Activity() {
                     printTemplate { MathWorksheet.build(op, count) }
                 }
             }
+    }
+
+    /** OTA 检查更新（藏在我的页 → 关于）：GitHub Releases 版本比对 + 下载安装 */
+    private fun checkForUpdate() {
+        val current = runCatching { packageManager.getPackageInfo(packageName, 0).versionName }
+            .getOrDefault("?")
+        val checking = android.app.ProgressDialog(this).apply {
+            setMessage("正在检查更新（v$current）…")
+            setCancelable(false)
+        }
+        checking.show()
+        UpdateManager.check(scope, this, object : UpdateManager.Listener {
+            override fun onUpdateAvailable(version: String, notes: String, url: String) {
+                checking.dismiss()
+                if (url.isEmpty()) {
+                    Toast.makeText(this@MainActivity, "发现新版本 v$version，但下载地址为空", Toast.LENGTH_LONG).show()
+                    return
+                }
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle("发现新版本 v$version")
+                    .setMessage(notes.ifEmpty { "点击更新下载安装" })
+                    .setPositiveButton("立即更新") { _, _ -> downloadUpdate(version, url) }
+                    .setNegativeButton("稍后", null)
+                    .show()
+            }
+
+            override fun onResult(message: String?) {
+                checking.dismiss()
+                Toast.makeText(
+                    this@MainActivity,
+                    message ?: "已是最新版本（v$current）",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        })
+    }
+
+    /** 下载 APK（进度条）→ FileProvider 安装 */
+    private fun downloadUpdate(version: String, url: String) {
+        val progress = android.app.ProgressDialog(this).apply {
+            setTitle("正在下载 v$version")
+            setMessage("0%")
+            setProgressStyle(android.app.ProgressDialog.STYLE_HORIZONTAL)
+            setCancelable(false)
+            max = 100
+            setButton(android.app.ProgressDialog.BUTTON_NEGATIVE, "取消") { _, _ -> }
+        }
+        progress.show()
+        UpdateManager.downloadAndInstall(
+            scope, this, version, url,
+            onProgress = { p ->
+                progress.progress = p
+                progress.setMessage("$p%")
+            },
+            onDone = { success ->
+                runCatching { if (progress.isShowing) progress.dismiss() }
+                PrintLog.event("OTA 下载${if (success) "成功并触发安装" else "失败"} v$version")
+            }
+        )
     }
 
     /** 自检页（藏在我的页）：Floyd 抖动渲染灰阶渐变 */

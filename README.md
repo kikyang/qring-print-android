@@ -18,7 +18,8 @@
 
 ## 下载 APK
 
-最新版见 [Releases](https://github.com/kikyang/qring-print-android/releases)（v0.4.1，5.3MB，需 Android 13+）。
+最新版见 [Releases](https://github.com/kikyang/qring-print-android/releases)（v0.5.1，0.87MB，需 Android 13+）。
+应用内「我的 → 关于 → 检查更新」可直接升级到新版本。
 
 ## 界面预览
 
@@ -43,7 +44,11 @@
 - **文档打印**（零依赖）：PDF（系统 PdfRenderer 逐页渲染 + 自动裁白边）、
   Word（docx 文本提取 / 老格式 doc 的 OLE2 解析）、Excel（xlsx 表格 / 老格式 xls 的 BIFF8 字符串表）、
   TXT（GBK/UTF-8 自动识别）
-- **常用模板**：课程表 / 单词表 / 每日计划，一键生成打印
+- **常用模板 + 错题卡（「其它」Tab，v0.5.1 合并）**：课程表 / 单词表 / 每日计划 / 口算题
+  一键生成打印，与错题卡统一收在打印页第 5 个 Tab
+- **元素排版**（v0.5，合成自 bzhou830/snowboys/lztttt 三方画布概念；v0.5.1 并入图片页）：
+  图片页「📐 排版」Dialog 打开，文字 / 图片 / 条码元素自由拖拽排版、缩放、置顶、
+  可存为模板复用；完成后加入图片通道统一预览/打印（与「🖌 涂鸦」入口一致）
 - **打印测试页**：浓度线 / 线条 / 灰阶渐变 / 文字（藏于「我的 → 关于」）
 
 ### 连接
@@ -56,6 +61,9 @@
 - **打印历史**：最近 100 条自动记录（无损光栅），一键重新打印
 - **打印设置**：浓度（0~2）/ 进纸 / 出纸 可调，持久化保存
 - 打印体检：开盖/缺纸/过热/低电量实时拦截
+- **检查更新（OTA，v0.5，2026-08-12 移植 lztttt 8-11 修复版）**：
+  藏于「我的 → 关于」，从 GitHub Releases 查最新版 → 下载 APK → 一键安装；
+  版本号数字分段比较，下载手动跟随重定向
 - 调试台（藏于「我的 → 关于」）：收发 hex 日志、原始命令
 
 ### UI
@@ -69,12 +77,28 @@
 
 ```bash
 cd android
-gradle assembleRelease    # 正式签名（需自行配置 keystore）
-gradle assembleDebug      # 调试版
+gradle runUnitTests       # 单元测试（协议/抖动/边缘检测 + Robolectric 界面测试，共 35 例）
+gradle assembleRelease    # 正式签名 release（R8 已开，APK ~0.9MB）
+gradle assembleDebug      # 调试版（无 R8，~6.4MB）
 ```
+
+### 测试覆盖（2026-08-12 建立）
+
+- **协议层**（QringProtocolTest）：状态位解析、开盖/缺纸提示优先级、指令字节序、走纸/光栅头拆分
+- **算法层**（DitherTest / CannyTest）：抖动密度统计、阈值语义、边缘检测边界
+- **界面层**（MainActivityUiTest，Robolectric）：启动三 Tab、文字预览生成、画布加元素/拖拽、模板存取、关于页入口
+- 首次跑 Robolectric 会自动下载 android-all 镜像（约 50MB，此后缓存）；蓝牙在 shadow 下为空实现
+- 新增测试类后记得把类名加进 `app/build.gradle.kts` 的 `runUnitTests.args`
 
 > 注意：工程路径含非 ASCII 字符时需在 `gradle.properties` 保留
 > `android.overridePathCheck=true`。
+>
+> 单元测试用 `runUnitTests`（JavaExec 任务）而非默认 `testDebugUnitTest`：
+> Gradle Test worker 的 @argfile 在 Windows 中文路径下 classpath 失效
+> （转义后的 `\\` 路径加载不到类），JavaExec 直传 -cp 绕开（2026-08-12 实测根因）。
+>
+> R8 minify 于 2026-08-12 开启（AGP 8.2.2 → 8.5.2 以兼容 Gradle 8.7），
+> APK 6.4MB → 0.87MB（-86%）；zxing 自带 consumer rules，mapping 已验证功能类全保留。
 
 ## 目录结构
 
@@ -132,3 +156,5 @@ gradle assembleDebug      # 调试版
 - [Thisko/QrintPrint](https://github.com/Thisko/QrintPrint) —— 协议逆向的起点（MIT）
 - [snowboys/QrintPrint-Windows](https://github.com/snowboys/QrintPrint-Windows) —— 同类项目参考
 - [soulxyz/xyprt_android](https://github.com/soulxyz/xyprt_android) —— Canny/LINES 描边、PDF 打印方案参考
+- [lztttt/QrintPrint-Android](https://github.com/lztttt/QrintPrint-Android) —— 口算/涂鸦/OTA 更新参考
+- [bzhou830/QringPrint](https://github.com/bzhou830/QringPrint) —— 自定义画布概念参考（uniapp）
