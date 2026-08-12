@@ -18,8 +18,9 @@
 
 ## 下载 APK
 
-最新版见 [Releases](https://github.com/kikyang/qring-print-android/releases)（v0.5.1，0.87MB，需 Android 13+）。
-应用内「我的 → 关于 → 检查更新」可直接升级到新版本。
+最新版见 [Releases](https://github.com/kikyang/qring-print-android/releases)（v0.5.5，0.87MB，需 Android 13+）。
+应用内「我的 → 关于 → 检查更新」可直接升级到新版本（检查走 jsDelivr，国内网络可用；
+发版后 2-3 小时内新版可能尚未被收录，属正常延迟）。
 
 ## 界面预览
 
@@ -61,9 +62,9 @@
 - **打印历史**：最近 100 条自动记录（无损光栅），一键重新打印
 - **打印设置**：浓度（0~2）/ 进纸 / 出纸 可调，持久化保存
 - 打印体检：开盖/缺纸/过热/低电量实时拦截
-- **检查更新（OTA，v0.5，2026-08-12 移植 lztttt 8-11 修复版）**：
-  藏于「我的 → 关于」，从 GitHub Releases 查最新版 → 下载 APK → 一键安装；
-  版本号数字分段比较，下载手动跟随重定向
+- **检查更新（OTA，v0.5.2 起走 jsDelivr）**：藏于「我的 → 关于」，
+  检查源 = jsDelivr data API（主）+ version.json（fallback），下载 = jsDelivr CDN @tag 路径
+  → 一键安装；版本号数字分段比较，下载手动跟随重定向（国内网络可用，发版后 2-3h 收录延迟属正常）
 - 调试台（藏于「我的 → 关于」）：收发 hex 日志、原始命令
 
 ### UI
