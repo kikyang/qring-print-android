@@ -34,22 +34,24 @@
 
 ## 功能
 
-### 打印（七入口，全部打印前自动预览确认，取消零耗纸）
-- **文字打印**：字号（小/中/大）+ 加粗 + 左/中/右对齐
-- **图片打印**：多选图、单列/双列拼接省纸；抖动三模式（无 / Floyd / Atkinson）；
+打印页顶部 **5 个二级 Tab**：文字 / 图片 / 条码 / 文档 / 其它（全部打印前自动预览确认，取消零耗纸）。
+
+### 打印
+- **文字打印**（Tab 1）：字号（小/中/大）+ 加粗 + 左/中/右对齐
+- **图片打印**（Tab 2）：多选图、单列/双列拼接省纸；抖动三模式（无 / Floyd / Atkinson）；
   消除笔（去红/蓝笔批改）；自动裁白边；一键增强（Sauvola 自适应二值化）；
-  **二值化阈值滑块**（黑白化阶段调"哪些算黑"，与打印浓度独立）；
-  **描边模式**（Canny 线稿 / LINES 描边，灵敏度/线宽/平滑/反白可调，移植自 xyprt）
-- **错题卡**：题目图（多图拼接 + 全套预处理）+ 错因 + 知识点 + 订正/举一反三手写区（练习本版式）
-- **条码/二维码**：QR + 7 种一维码（Code128/Code39/EAN13/EAN8/UPC-A/ITF/Codabar），内容实时校验
-- **文档打印**（零依赖）：PDF（系统 PdfRenderer 逐页渲染 + 自动裁白边）、
+  二值化阈值滑块（黑白化阶段调"哪些算黑"，与打印浓度独立）；
+  描边模式（Canny 线稿 / LINES 描边，灵敏度/线宽/平滑/反白可调，移植自 xyprt）；
+  另有 **🖌 涂鸦**（手指绘图）与 **📐 元素排版** 两个 Dialog 入口，完成后加入图片通道统一打印
+- **条码/二维码**（Tab 3）：QR + 7 种一维码（Code128/Code39/EAN13/EAN8/UPC-A/ITF/Codabar），内容实时校验
+- **文档打印**（Tab 4，零依赖）：PDF（系统 PdfRenderer 逐页渲染 + 自动裁白边）、
   Word（docx 文本提取 / 老格式 doc 的 OLE2 解析）、Excel（xlsx 表格 / 老格式 xls 的 BIFF8 字符串表）、
   TXT（GBK/UTF-8 自动识别）
-- **常用模板 + 错题卡（「其它」Tab，v0.5.1 合并）**：课程表 / 单词表 / 每日计划 / 口算题
-  一键生成打印，与错题卡统一收在打印页第 5 个 Tab
+- **其它**（Tab 5，v0.5.1 合并）：
+  - **常用模板宫格**（2×2 图标）：课程表 / 单词表 / 每日计划 / 口算题，一键生成打印
+  - **错题卡**：题目图（多图拼接 + 全套预处理）+ 错因 + 知识点 + 订正/举一反三手写区（练习本版式）
 - **元素排版**（v0.5，合成自 bzhou830/snowboys/lztttt 三方画布概念；v0.5.1 并入图片页）：
-  图片页「📐 排版」Dialog 打开，文字 / 图片 / 条码元素自由拖拽排版、缩放、置顶、
-  可存为模板复用；完成后加入图片通道统一预览/打印（与「🖌 涂鸦」入口一致）
+  文字 / 图片 / 条码元素自由拖拽排版、缩放、置顶，可存为模板复用（图片元素随画布打印但不随模板持久化）
 - **打印测试页**：浓度线 / 线条 / 灰阶渐变 / 文字（藏于「我的 → 关于」）
 
 ### 连接
@@ -70,7 +72,8 @@
 ### UI
 - **微信小程序风格**（灰底白卡 #F7F7F7/#FFFFFF、微信绿 #07C160、8px 圆角、线性图标），
   支持系统深色模式
-- 底部三 Tab：首页（设备状态 + 9 宫格）/ 打印（文字/图片/错题卡/条码/文档二级切换）/ 我的（设置 + 历史 + 设备管理）
+- 底部三 Tab：首页（设备状态 + 6 宫格：文字/图片/条码/文档/其它打印/历史）/
+  打印（文字/图片/条码/文档/其它二级切换）/ 我的（设置 + 历史 + 设备管理）
 
 ## 构建
 
@@ -78,17 +81,19 @@
 
 ```bash
 cd android
-gradle runUnitTests       # 单元测试（协议/抖动/边缘检测 + Robolectric 界面测试，共 35 例）
+gradle runUnitTests       # 单元测试（协议/抖动/边缘检测 + Robolectric 界面测试，共 36 例）
 gradle assembleRelease    # 正式签名 release（R8 已开，APK ~0.9MB）
 gradle assembleDebug      # 调试版（无 R8，~6.4MB）
 ```
 
 ### 测试覆盖（2026-08-12 建立）
 
-- **协议层**（QringProtocolTest）：状态位解析、开盖/缺纸提示优先级、指令字节序、走纸/光栅头拆分
-- **算法层**（DitherTest / CannyTest）：抖动密度统计、阈值语义、边缘检测边界
-- **界面层**（MainActivityUiTest，Robolectric）：启动三 Tab、文字预览生成、画布加元素/拖拽、模板存取、关于页入口
-- 首次跑 Robolectric 会自动下载 android-all 镜像（约 50MB，此后缓存）；蓝牙在 shadow 下为空实现
+- **协议层**（QringProtocolTest，15 例）：状态位解析、开盖/缺纸提示优先级、指令字节序、走纸/光栅头拆分
+- **算法层**（DitherTest / CannyTest，13 例）：抖动密度统计、阈值语义、边缘检测边界
+- **界面层**（MainActivityUiTest，8 例，Robolectric）：启动三 Tab 与五功能块、图标文件断言、
+  文字预览生成、排版 Dialog 加元素、渲染、模板存取、我的页入口
+- 首次跑 Robolectric 会自动下载 android-all 镜像（约 150MB，此后缓存于 ~/.robolectric）；
+  蓝牙在 shadow 下为空实现
 - 新增测试类后记得把类名加进 `app/build.gradle.kts` 的 `runUnitTests.args`
 
 > 注意：工程路径含非 ASCII 字符时需在 `gradle.properties` 保留
@@ -123,9 +128,17 @@ gradle assembleDebug      # 调试版（无 R8，~6.4MB）
 │       ├── LegacyDocExtractor.kt     # 老格式 doc/xls（OLE2 解析）
 │       ├── TemplateBuilder.kt        # 错题卡模板
 │       ├── TemplateLibrary.kt        # 课程表/单词表/每日计划
+│       ├── MathWorksheet.kt          # 口算题生成（借鉴 lztttt）
+│       ├── DrawCanvasView.kt         # 画布涂鸦（并入图片通道）
+│       ├── CanvasEditor.kt           # 元素排版：元素模型/384 宽渲染/模板 JSON 存取
+│       ├── CanvasLayout.kt           # 元素排版：拖拽/命中/缩放/置顶
+│       ├── UpdateManager.kt          # OTA 检查更新（jsDelivr + GitHub fallback）
 │       ├── SelfTest.kt               # 打印测试页
 │       ├── Design.kt                 # 微信风设计系统（含线性图标）
 │       └── MainActivity.kt           # 三 Tab 主界面
+│   └── app/src/test/java/com/qring/print/  # 36 例测试
+│       ├── QringProtocolTest.kt / DitherTest.kt / CannyTest.kt
+│       └── MainActivityUiTest.kt     # Robolectric 界面测试
 ├── docs/
 │   ├── architecture.md   # 人类可读的架构说明（推荐先读）
 │   ├── protocol.md       # 完整协议（指令表/状态位/时序/光栅编码）
