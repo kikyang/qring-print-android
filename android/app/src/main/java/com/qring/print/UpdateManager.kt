@@ -32,8 +32,13 @@ object UpdateManager {
     private const val API_BASE = "https://api.github.com/repos/$GITHUB_OWNER/$GITHUB_REPO"
 
     // 2026-08-12：国内手机直连 api.github.com 不通（桌面有代理可用，App 没有）→
-    // 检查改走 jsDelivr data API（实时查 tag，国内可达），下载走 jsDelivr CDN @tag 路径
-    // （发版时 APK 需提交进仓库 releases/ 目录）。GitHub API 仅作 fallback。
+    // 检查改走 jsDelivr（国内可达）。注意：jsDelivr data API 的 tag 列表索引缓存滞后
+    // 可达数小时（实测 2h+ 未同步新 tag）——所以用仓库内 version.json 做主源：
+    // 发版时更新 version.json + APK 提交进 releases/，@main 路径缓存实测 20 秒内生效。
+    // 下载走 jsDelivr CDN @v{version} tag 路径（tag 不可变，永久缓存正确）。
+    // data API 与 GitHub API 仅作 fallback。
+    private const val JSDELIVR_VERSION_URL =
+        "https://cdn.jsdelivr.net/gh/$GITHUB_OWNER/$GITHUB_REPO@main/version.json"
     private const val JSDELIVR_DATA_URL = "https://data.jsdelivr.com/v1/packages/gh/$GITHUB_OWNER/$GITHUB_REPO"
     private const val JSDELIVR_CDN_BASE = "https://cdn.jsdelivr.net/gh/$GITHUB_OWNER/$GITHUB_REPO@v"
     private const val APK_REPO_PATH = "releases/app-release.apk"
@@ -58,11 +63,14 @@ object UpdateManager {
             val current = runCatching {
                 activity.packageManager.getPackageInfo(activity.packageName, 0).versionName
             }.getOrDefault("0.0.0")
-            // jsDelivr data API 优先（国内可达、实时 tag 列表），失败回退 GitHub API
+            // 主源：jsDelivr @main/version.json（发版时更新，缓存实测 20s 内生效）
+            // fallback 1：jsDelivr data API（tag 索引，滞后但可用）
+            // fallback 2：GitHub API（海外）
             val info = withContext(Dispatchers.IO) {
-                runCatching { httpGet(JSDELIVR_DATA_URL) }.getOrNull()
+                runCatching { httpGet(JSDELIVR_VERSION_URL) }.getOrNull()
+                    ?: runCatching { httpGet(JSDELIVR_DATA_URL) }.getOrNull()
                     ?: runCatching { httpGet("$API_BASE/releases/latest") }.getOrNull()
-                // 两个源都失败 → null → 网络异常提示
+                // 三个源都失败 → null → 网络异常提示
             } ?: run {
                 withContext(Dispatchers.Main) {
                     listener.onResult("检查更新失败：网络异常（jsDelivr 与 GitHub 均不可达）")
@@ -72,11 +80,16 @@ object UpdateManager {
 
             runCatching {
                 val obj = JSONObject(info)
-                // jsDelivr data API：{"versions":[{"version":"0.5.1"},...]}（最新在前，无 v 前缀）
-                val jsdVersion = obj.optJSONArray("versions")?.optJSONObject(0)?.optString("version")
-                if (!jsdVersion.isNullOrEmpty()) {
-                    // 下载走 jsDelivr CDN @tag 路径（发版时 APK 已提交进仓库 releases/）
-                    Triple(jsdVersion.removePrefix("v"), "", "$JSDELIVR_CDN_BASE$jsdVersion/$APK_REPO_PATH")
+                // 主源：{"version":"0.5.3","notes":"..."}（下载走 @v{version} tag 路径）
+                val vJson = obj.optString("version").removePrefix("v")
+                if (vJson.isNotEmpty() && vJson != "null" && !obj.has("versions") && !obj.has("tag_name")) {
+                    Triple(vJson, obj.optString("notes", "").trim().take(500), "$JSDELIVR_CDN_BASE$vJson/$APK_REPO_PATH")
+                } else if (obj.has("versions")) {
+                    // jsDelivr data API：{"versions":[{"version":"0.5.1"},...]}（最新在前，无 v 前缀）
+                    val jsdVersion = obj.optJSONArray("versions")?.optJSONObject(0)?.optString("version")
+                    if (!jsdVersion.isNullOrEmpty()) {
+                        Triple(jsdVersion.removePrefix("v"), "", "$JSDELIVR_CDN_BASE$jsdVersion/$APK_REPO_PATH")
+                    } else error("jsDelivr 数据为空")
                 } else {
                     // GitHub API：tag_name / body / assets.browser_download_url
                     val tag = obj.optString("tag_name").removePrefix("v")
