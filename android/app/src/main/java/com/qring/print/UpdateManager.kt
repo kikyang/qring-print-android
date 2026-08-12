@@ -63,12 +63,15 @@ object UpdateManager {
             val current = runCatching {
                 activity.packageManager.getPackageInfo(activity.packageName, 0).versionName
             }.getOrDefault("0.0.0")
-            // 主源：jsDelivr @main/version.json（发版时更新，缓存实测 20s 内生效）
-            // fallback 1：jsDelivr data API（tag 索引，滞后但可用）
-            // fallback 2：GitHub API（海外）
+            // 源顺序（2026-08-12 实测结论）：
+            // 1) data API 版本列表——收录新 tag 滞后约 2-3h，但收录后版本与下载都正确；
+            //    @main/version.json 分支指针缓存 purge 不掉（更不可靠）→ 降为 fallback
+            // 2) @main/version.json（分支指针缓存可能滞后）
+            // 3) GitHub API（海外，国内不通）
+            // 下载一律走 @v{version} tag 路径——tag 不可变、冷缓存秒级生效，无滞后问题。
             val info = withContext(Dispatchers.IO) {
-                runCatching { httpGet(JSDELIVR_VERSION_URL) }.getOrNull()
-                    ?: runCatching { httpGet(JSDELIVR_DATA_URL) }.getOrNull()
+                runCatching { httpGet(JSDELIVR_DATA_URL) }.getOrNull()
+                    ?: runCatching { httpGet(JSDELIVR_VERSION_URL) }.getOrNull()
                     ?: runCatching { httpGet("$API_BASE/releases/latest") }.getOrNull()
                 // 三个源都失败 → null → 网络异常提示
             } ?: run {
@@ -80,16 +83,16 @@ object UpdateManager {
 
             runCatching {
                 val obj = JSONObject(info)
-                // 主源：{"version":"0.5.3","notes":"..."}（下载走 @v{version} tag 路径）
-                val vJson = obj.optString("version").removePrefix("v")
-                if (vJson.isNotEmpty() && vJson != "null" && !obj.has("versions") && !obj.has("tag_name")) {
-                    Triple(vJson, obj.optString("notes", "").trim().take(500), "$JSDELIVR_CDN_BASE$vJson/$APK_REPO_PATH")
-                } else if (obj.has("versions")) {
+                if (obj.has("versions")) {
                     // jsDelivr data API：{"versions":[{"version":"0.5.1"},...]}（最新在前，无 v 前缀）
                     val jsdVersion = obj.optJSONArray("versions")?.optJSONObject(0)?.optString("version")
                     if (!jsdVersion.isNullOrEmpty()) {
                         Triple(jsdVersion.removePrefix("v"), "", "$JSDELIVR_CDN_BASE$jsdVersion/$APK_REPO_PATH")
                     } else error("jsDelivr 数据为空")
+                } else if (obj.has("version")) {
+                    // @main/version.json：{"version":"0.5.3","notes":"..."}
+                    val vJson = obj.optString("version").removePrefix("v")
+                    Triple(vJson, obj.optString("notes", "").trim().take(500), "$JSDELIVR_CDN_BASE$vJson/$APK_REPO_PATH")
                 } else {
                     // GitHub API：tag_name / body / assets.browser_download_url
                     val tag = obj.optString("tag_name").removePrefix("v")
