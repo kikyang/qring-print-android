@@ -2,6 +2,7 @@ package com.qring.print
 
 import android.app.Activity
 import android.content.Context
+import android.util.Log
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -132,7 +133,12 @@ object UpdateManager {
         try {
             val code = conn.responseCode
             if (code != 200) throw IllegalStateException("HTTP $code")
-            return conn.inputStream.bufferedReader().use { it.readText() }
+            val body = conn.inputStream.bufferedReader().use { it.readText() }
+            Log.d("UpdateManager", "GET ${urlStr.substringBefore("?")} -> $code, ${body.length}B")
+            return body
+        } catch (e: Exception) {
+            Log.e("UpdateManager", "GET ${urlStr.substringBefore("?")} 失败: ${e.javaClass.simpleName}: ${e.message}")
+            throw e
         } finally {
             conn.disconnect()
         }

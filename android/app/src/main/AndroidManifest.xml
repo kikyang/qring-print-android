@@ -9,6 +9,9 @@
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
         android:usesPermissionFlags="neverForLocation" />
+    <!-- OTA 检查更新/下载 APK（2026-08-13 补：v0.5.2 起缺这行，release 包无 INTERNET 权限
+         导致 OTA 全部失败——AGP debug 构建自动注入该权限、release 不注入，所以只在 release 暴露） -->
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <application
         android:label="错题小印打印"
