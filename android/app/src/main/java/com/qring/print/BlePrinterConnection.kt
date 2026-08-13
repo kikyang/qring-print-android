@@ -34,8 +34,15 @@ import java.util.UUID
  *   **不要 ENABLE2（1F B2 10）**：X1 固件不识别，会被文本引擎渲染成「固」字乱码
  * - 光栅用 GS v 0 **m=0**（m=1 对含 0x00 的数据有 bug）
  * - 浓度合法范围 0~2（3/4 报 ER），默认 2
- * - 发送分包 32B + 带响应（WRITE_TYPE_DEFAULT）+ 包间 60ms：
- *   透传芯片缓冲小，write-without-response 快速写会丢包导致光栅数据残缺
+ * - 发送：无确认写（WRITE_TYPE_NO_RESPONSE）+ 包间 80ms + 分包默认 32B。
+ *
+ *   2026-08-13 电脑端直连实测（Windows bleak，MTU 协商同为 136）：**打印机
+ *   物理上完全能吃满 MTU 满包**——133B/包连 2ms 间隔、407 行大图都稳定；
+ *   「ISSC 芯片缓冲 32B」旧结论作废（160B 失败只是 Windows 本地 MTU 限制）。
+ *   但**手机端** 大包会卡死——2026-08-13 手机扫档实测：128B 卡死（动一下即停）、
+ *   **96B/40ms 稳定**，故默认分包 = 96B/40ms（比旧基线 32B/80ms 快 6 倍）。
+ *   电脑端与手机端差异是 Android 蓝牙栈对 WRITE_TYPE_NO_RESPONSE 大包的行为差异。
+ *   [overrideChunk]/[overrideDelayMs] 调试注入仍在（调试台扫档备用）。
  */
 @SuppressLint("MissingPermission")
 class BlePrinterConnection(
@@ -50,29 +57,28 @@ class BlePrinterConnection(
 
         /** 状态轮询间隔 */
         private const val POLL_INTERVAL_MS = 10_000L
-        /** 查询响应等待上限 */
-        private const val QUERY_TIMEOUT_MS = 1_500L
-        /** 发命令后等打印机准备响应的时间，照搬 SDK */
-        private const val QUERY_SETTLE_MS = 150L
-        /** 等打印完成 ACK 的上限 */
-        private const val ACK_TIMEOUT_MS = 120_000L
-        /** 打印前后走纸点行 */
-        private const val FEED_BEFORE = 10
-        private const val FEED_AFTER = 100
         /** 接收缓冲兜底上限 */
         private const val RX_BUFFER_MAX = 4096
-        /** BLE 透传单包上限（实测 32B 稳定，MTU 23 时 20B 也能用） */
-        private const val BLE_CHUNK = 32
-        /** 分包间隔：越慢打印头越热（热积累显色更深），用户实测要求更慢 */
-        private const val BLE_CHUNK_DELAY_MS = 80L
-        /** 默认打印浓度（X1 合法范围 0~2，实测 2 显色最好） */
-        const val DEFAULT_THICKNESS = 2
-        /** 光栅分块行数：单次 GS v 0 超限会固字瀑布（实测 m=0 时 128 行 OK / 256 行失败）。
-         *  m=2 双倍高时每行数据打两遍（物理 2 倍行），取 64 行数据（=128 物理行）保守安全 */
-        private const val RASTER_CHUNK_ROWS = 64
+        /** BLE 透传单包默认大小。2026-08-13 手机扫档实测定稿：**96B 稳定、128B 卡死**
+         *  （打印机动一下即停，Android 栈对大包行为与电脑端不同），取 96B 为 Android 端
+         *  稳定最大值；比旧基线 32B 快 3 倍。调试台扫档可覆盖（[overrideChunk]）。 */
+        private const val BLE_CHUNK_DEFAULT = 96
+        /** 请求协商的 MTU（Android ATT 单包上限 517；仅调试扫档时参考，不用于默认分包） */
+        private const val REQUEST_MTU = 517
+        /** 分包间隔（2026-08-13 手机扫档定稿）：**96B/40ms 实测稳定**，比旧基线 80ms 快
+         *  一倍。80ms 是旧防丢包保守值，40ms 已实测连续打印不卡死。调试台扫档可覆盖。 */
+        private const val BLE_CHUNK_DELAY_MS = 40L
 
-        /** ESC @ 初始化（文本/光栅打印前的解析器复位） */
-        private val CMD_ESC_INIT = byteArrayOf(0x1B, 0x40)
+        /** 调试注入：分包大小覆盖（DebugActivity 扫档用；null=用默认 96B）。见 send() */
+        @Volatile
+        var overrideChunk: Int? = null
+        /** 调试注入：分包间隔覆盖（毫秒；null=用默认 40ms）。见 send() */
+        @Volatile
+        var overrideDelayMs: Int? = null
+
+        /** 默认打印浓度（X1 合法范围 0~2，实测 2 显色最好）。
+         *  2026-08-13 起实际常量在 PrintJobRunner（BLE/SPP/Fake 三通道共享打印时序） */
+        const val DEFAULT_THICKNESS = PrintJobRunner.DEFAULT_THICKNESS
     }
 
     @Volatile override var connectedDevice: BluetoothDevice? = null
@@ -106,6 +112,10 @@ class BlePrinterConnection(
     private var writeChar: BluetoothGattCharacteristic? = null
     private var notifyChar: BluetoothGattCharacteristic? = null
 
+    /** 协商成功的 MTU（onMtuChanged 记录；0=未协商/失败 → 发送回退 32B 小包）。
+     *  2026-08-13：requestMtu 一直有调，但此前没利用协商结果，固定 32B/包浪费了大 MTU */
+    @Volatile private var negotiatedMtu = 0
+
     /** 打印任务进行中 —— 期间暂停状态轮询 */
     @Volatile private var busy = false
 
@@ -114,6 +124,20 @@ class BlePrinterConnection(
 
     private val mutex = Mutex()
     private var pollJob: kotlinx.coroutines.Job? = null
+
+    /** 适配 [PrinterIo]：发送/接收都走 GATT 通道（打印时序在 PrintJobRunner，与 SPP/Fake 共享） */
+    private val io = object : PrinterIo {
+        /** BLE 传输慢（96B/40ms），光栅块间保留 150ms 等传输（不可减） */
+        override val rasterChunkDelayMs: Long = 150L
+        override suspend fun write(bytes: ByteArray): Boolean = send(bytes)
+
+        override suspend fun readAvailable(n: Int, timeoutMs: Long): List<Int> =
+            waitBytes(n, timeoutMs)
+
+        override fun clearRx() {
+            synchronized(rxBuffer) { rxBuffer.clear() }
+        }
+    }
 
     /** 当前等待的连接/服务发现（回调驱动） */
     private var connectPending: CompletableDeferred<Boolean>? = null
@@ -236,6 +260,19 @@ class BlePrinterConnection(
                     onRx(value)
                 }
 
+                override fun onMtuChanged(g: BluetoothGatt, mtu: Int, status: Int) {
+                    // 只记录协商结果供调试参考。2026-08-13 实测：打印机物理能吃满
+                    // MTU 满包（电脑端 133B 稳定），但 Android 栈大包会卡死，
+                    // 故协商值不用于默认分包——分包见 send()（默认固定 32B）。
+                    if (status == BluetoothGatt.GATT_SUCCESS && mtu >= 64) {
+                        negotiatedMtu = mtu
+                        PrintLog.event("BLE MTU 协商成功: $mtu（分包走默认/调试覆盖）")
+                    } else {
+                        negotiatedMtu = 0
+                        PrintLog.event("BLE MTU 协商失败 status=$status")
+                    }
+                }
+
             }
             // 必须指定 TRANSPORT_LE：DUAL 设备默认走 BR/EDR，但打印机 GATT 服务只在 BLE 上
             gatt = device.connectGatt(appContext, false, cb, BluetoothDevice.TRANSPORT_LE)
@@ -291,17 +328,21 @@ class BlePrinterConnection(
     // ── 底层收发 ──────────────────────────────────────────────
 
     /**
-     * 发送数据（分包 32B + 带响应 + 60ms 间隔）。
-     * 透传芯片缓冲小，必须带响应确认逐包送达，否则光栅数据会残缺。
+     * 发送数据（无确认写 + 默认 32B/包 + 80ms 包间）。
+     * 2026-08-13 电脑端实测打印机物理能吃满 MTU 满包，但 Android 栈对大包
+     * 行为不同（133B 实测卡死），故默认保持 32B 防丢包基线；调试台扫档时
+     * 用 [overrideChunk]/[overrideDelayMs] 覆盖测 Android 端稳定分包值。
      */
     private suspend fun send(data: ByteArray): Boolean {
         val g = gatt ?: return false
         val char = writeChar ?: return false
+        val chunkSize = overrideChunk ?: BLE_CHUNK_DEFAULT
+        val chunkDelay: Long = overrideDelayMs?.toLong() ?: BLE_CHUNK_DELAY_MS
         val total = data.size
         var offset = 0
         while (offset < total) {
-            val end = minOf(offset + BLE_CHUNK, total)
-            val chunk = data.copyOfRange(offset, end)
+            val end = minOf(offset + chunkSize, total)
+            val packet = data.copyOfRange(offset, end)
             // 无确认写（onCharacteristicWrite 回调在 SDK 34 不可 override），
             // 靠小包 + 固定间隔让透传芯片消化，电脑端已实测稳定。
             // SDK 33+ 的 writeCharacteristic 返回 int 状态码（0=成功）
@@ -309,24 +350,17 @@ class BlePrinterConnection(
             // 吞掉转失败返回——查询/打印路径都依赖它，不能让它崩协程
             val status = try {
                 g.writeCharacteristic(
-                    char, chunk, BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
+                    char, packet, BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
                 )
             } catch (e: Exception) {
                 PrintLog.event("写特征异常: ${e.javaClass.simpleName}: ${e.message}")
                 return false
             }
             if (status != BluetoothGatt.GATT_SUCCESS) return false
-            delay(BLE_CHUNK_DELAY_MS)
+            delay(chunkDelay)
             offset = end
         }
         PrintLog.log('T', data)
-        return true
-    }
-
-    private suspend fun sendAll(commands: List<ByteArray>): Boolean {
-        for (cmd in commands) {
-            if (!send(cmd)) return false
-        }
         return true
     }
 
@@ -361,39 +395,8 @@ class BlePrinterConnection(
     }
 
     /** 清空输入 → 发命令 → 稍等 → 读响应。这是官方 SDK 的固定套路 */
-    private suspend fun query(command: ByteArray, nbytes: Int): List<Int> {
-        synchronized(rxBuffer) { rxBuffer.clear() }
-        if (!send(command)) return emptyList()
-        delay(QUERY_SETTLE_MS)
-        return waitBytes(nbytes, QUERY_TIMEOUT_MS)
-    }
-
-    /** 等打印完成 ACK (0xAA)，同时盯 FF xx 故障帧 */
-    private suspend fun waitAck(timeoutMs: Long): PrintResult {
-        val deadline = System.currentTimeMillis() + timeoutMs
-        while (System.currentTimeMillis() < deadline) {
-            synchronized(rxBuffer) {
-                if (rxBuffer.contains(ACK_PRINT_DONE)) {
-                    rxBuffer.clear()
-                    return PrintResult(true, "打印完成")
-                }
-                val it = rxBuffer.iterator()
-                var prev: Int? = null
-                while (it.hasNext()) {
-                    val b = it.next()
-                    if (prev == FAULT_FRAME_HEAD) {
-                        FaultCode.from(b)?.let { fc ->
-                            rxBuffer.clear()
-                            return PrintResult(false, fc.label)
-                        }
-                    }
-                    prev = b
-                }
-            }
-            delay(100)
-        }
-        return PrintResult(false, "等待打印完成超时")
-    }
+    private suspend fun query(command: ByteArray, nbytes: Int): List<Int> =
+        PrintJobRunner.query(io, command, nbytes)
 
     // ── 查询 ──────────────────────────────────────────────────
 
@@ -485,48 +488,12 @@ class BlePrinterConnection(
         PrintLog.event("打印开始 mode=$mode halve=$halveRows 行=${raster.height}")
 
         try {
-            if (!send(CMD_STOP)) return PrintResult(false, "发送失败，连接可能已断开")
-            delay(100)
-            if (!send(CMD_ENABLE)) return PrintResult(false, "发送失败，连接可能已断开")
-            val t = thickness ?: DEFAULT_THICKNESS
-            send(cmdThickness(t))
-            send(CMD_WAKEUP)
-            send(CMD_ESC_INIT)
-
+            // 打印时序在 PrintJobRunner（与 SPP/Fake 同一份代码，2026-08-13 抽取）。
             // 无预热条：2026-08-11 用户实测排除——文字不打预热本来就黑；
             // 全黑块打不打预热都不黑（固件电流限制，strobe 固定短）。
-            // 预热条只会白费纸 + 顶部多一条怪黑条（光栅头紧跟 ESC@ 被文本引擎吞字节）
-            // 进纸/出纸可调（2026-08-11 加，Settings 持久化，参考 QrintPrint-Windows）
-            val fb = (feedBefore ?: FEED_BEFORE).coerceIn(0, 255)
-            val fa = (feedAfter ?: FEED_AFTER).coerceIn(0, 255)
-            sendAll(cmdFeed(fb))
-
-            // 图片通道：先行合并减半（2 行 OR 1 行），再用 m=2 双打
-            val data = if (halveRows) RasterEncoder.halveRows(raster) else raster
-            val h = data.height
-
-            // 光栅分块发送：单次 GS v 0 数据量超限会固字瀑布（实测 128 行 OK / 256 行失败）。
-            // 每块独立 GS v 0 头 + 块间短延迟，打印连续不中断。
-            val w = data.widthBytes
-            var rowOffset = 0
-            while (rowOffset < h) {
-                val rows = minOf(RASTER_CHUNK_ROWS, h - rowOffset)
-                send(cmdRasterHeader(w, rows, mode))
-                val chunk = data.data.copyOfRange(
-                    rowOffset * w, (rowOffset + rows) * w
-                )
-                if (!send(chunk)) return PrintResult(false, "位图发送中断")
-                rowOffset += rows
-                delay(150)
-            }
-
-            sendAll(cmdFeed(fa))
-            send(CMD_STOP)
-
-            // ACK 超时动态计算（2026-08-11 借鉴 lztttt/QrintPrint-Android）：
-            // 基础 8s + 每行 5ms，上限 30s——打印失败不用傻等固定 120s
-            val ackTimeout = minOf(30_000L, 8_000L + h * 5L)
-            return waitAck(ackTimeout)
+            return PrintJobRunner.printRaster(
+                io, raster, thickness, mode, halveRows, feedBefore, feedAfter
+            )
         } catch (e: Exception) {
             // 2026-08-11 自检页"一点就断连"根因：协程无 try-catch，BLE 异常直接崩 App。
             // 任何底层异常转为打印失败结果，绝不崩协程。
@@ -561,8 +528,8 @@ class BlePrinterConnection(
         }
         synchronized(rxBuffer) { rxBuffer.clear() }
         if (!send(bytes)) return emptyList()
-        delay(QUERY_SETTLE_MS)
-        return waitBytes(expectBytes, QUERY_TIMEOUT_MS)
+        delay(PrintJobRunner.QUERY_SETTLE_MS)
+        return waitBytes(expectBytes, PrintJobRunner.QUERY_TIMEOUT_MS)
     }
 
     // ── 状态轮询 ──────────────────────────────────────────────

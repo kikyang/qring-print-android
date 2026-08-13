@@ -18,11 +18,12 @@ import kotlinx.coroutines.withTimeoutOrNull
 /**
  * 错题小印 X1 蓝牙连接管理 —— **经典蓝牙 SPP 通道**（RFCOMM，标准串口 UUID）。
  *
- * 2026-08-11 实测修正：X1 的 SPP 通道**可以打印**（用户真机验证），
- * 但**查询无响应**（10 FF 40/70 等发出去不回复）——是**单向通道**（只收不发），
- * 不是空壳。之前 2026-08-10 电脑端"SPP 空壳"结论系只测了查询、误判。
- * 表现：SPP 连接成功 → 型号/固件显示 "?"（查询无响应）→ 打印正常出纸。
- * preflightCheck 查询失败返回 null 放行，正好适配单向通道。
+ * 2026-08-11 实测修正：X1 的 SPP 通道**可以打印**（用户真机验证）；
+ * 2026-08-13 重启打印机后进一步实测：**查询也可响应**
+ * （10 FF 40/50/70 均正常返回）——早期"单向、查询无响应"结论系
+ * BLE 占用时连接失败的假象（打印机单连接约束，BLE 挂着时 SPP 被拒）。
+ * 表现：SPP 连接成功 → 型号/固件可读出 → 打印正常且比 BLE 更快更黑。
+ * preflightCheck 查询失败仍返回 null 放行（防个别机型真无响应时卡打印）。
  *
  * 与 BLE 版的差异只在收发：
  * - 连接：createRfcommSocketToServiceRecord（失败换 insecure 再试），connect 前必须 cancelDiscovery
@@ -44,24 +45,11 @@ class SppPrinterConnection(
         private const val SPP_CONNECT_TIMEOUT_MS = 15_000L
         /** 状态轮询间隔 */
         private const val POLL_INTERVAL_MS = 10_000L
-        /** 查询响应等待上限 */
-        private const val QUERY_TIMEOUT_MS = 1_500L
-        /** 发命令后等打印机准备响应的时间，照搬 SDK */
-        private const val QUERY_SETTLE_MS = 150L
-        /** 等打印完成 ACK 的上限 */
-        private const val ACK_TIMEOUT_MS = 120_000L
-        /** 打印前后走纸点行 */
-        private const val FEED_BEFORE = 10
-        private const val FEED_AFTER = 100
         /** 接收缓冲兜底上限 */
         private const val RX_BUFFER_MAX = 4096
-        /** 默认打印浓度（X1 合法范围 0~2，实测 2 显色最好） */
-        const val DEFAULT_THICKNESS = 2
-        /** 光栅分块行数（与 BLE 版一致，协议层分块） */
-        private const val RASTER_CHUNK_ROWS = 64
-
-        /** ESC @ 初始化（文本/光栅打印前的解析器复位） */
-        private val CMD_ESC_INIT = byteArrayOf(0x1B, 0x40)
+        /** 默认打印浓度（X1 合法范围 0~2，实测 2 显色最好）。
+         *  2026-08-13 起实际常量在 PrintJobRunner（BLE/SPP/Fake 三通道共享打印时序） */
+        const val DEFAULT_THICKNESS = PrintJobRunner.DEFAULT_THICKNESS
     }
 
     @Volatile override var connectedDevice: BluetoothDevice? = null
@@ -104,6 +92,20 @@ class SppPrinterConnection(
 
     private val mutex = Mutex()
     private var pollJob: kotlinx.coroutines.Job? = null
+
+    /** 适配 [PrinterIo]：发送/接收都走 RFCOMM（打印时序在 PrintJobRunner，与 BLE/Fake 共享） */
+    private val io = object : PrinterIo {
+        /** SPP 快：光栅块间 0ms（2026-08-13 实测 30/0ms 均内容完整且更清晰；150ms 是 BLE 保守值） */
+        override val rasterChunkDelayMs: Long = 0
+        override suspend fun write(bytes: ByteArray): Boolean = send(bytes)
+
+        override suspend fun readAvailable(n: Int, timeoutMs: Long): List<Int> =
+            waitBytes(n, timeoutMs)
+
+        override fun clearRx() {
+            synchronized(rxBuffer) { rxBuffer.clear() }
+        }
+    }
 
     // ── 连接 / 断开 ───────────────────────────────────────────
 
@@ -270,13 +272,6 @@ class SppPrinterConnection(
         }
     }
 
-    private suspend fun sendAll(commands: List<ByteArray>): Boolean {
-        for (cmd in commands) {
-            if (!send(cmd)) return false
-        }
-        return true
-    }
-
     private suspend fun waitBytes(n: Int, timeoutMs: Long): List<Int> {
         val deadline = System.currentTimeMillis() + timeoutMs
         while (System.currentTimeMillis() < deadline) {
@@ -308,39 +303,8 @@ class SppPrinterConnection(
     }
 
     /** 清空输入 → 发命令 → 稍等 → 读响应。这是官方 SDK 的固定套路 */
-    private suspend fun query(command: ByteArray, nbytes: Int): List<Int> {
-        synchronized(rxBuffer) { rxBuffer.clear() }
-        if (!send(command)) return emptyList()
-        delay(QUERY_SETTLE_MS)
-        return waitBytes(nbytes, QUERY_TIMEOUT_MS)
-    }
-
-    /** 等打印完成 ACK (0xAA)，同时盯 FF xx 故障帧 */
-    private suspend fun waitAck(timeoutMs: Long): PrintResult {
-        val deadline = System.currentTimeMillis() + timeoutMs
-        while (System.currentTimeMillis() < deadline) {
-            synchronized(rxBuffer) {
-                if (rxBuffer.contains(ACK_PRINT_DONE)) {
-                    rxBuffer.clear()
-                    return PrintResult(true, "打印完成")
-                }
-                val it = rxBuffer.iterator()
-                var prev: Int? = null
-                while (it.hasNext()) {
-                    val b = it.next()
-                    if (prev == FAULT_FRAME_HEAD) {
-                        FaultCode.from(b)?.let { fc ->
-                            rxBuffer.clear()
-                            return PrintResult(false, fc.label)
-                        }
-                    }
-                    prev = b
-                }
-            }
-            delay(100)
-        }
-        return PrintResult(false, "等待打印完成超时")
-    }
+    private suspend fun query(command: ByteArray, nbytes: Int): List<Int> =
+        PrintJobRunner.query(io, command, nbytes)
 
     // ── 查询 ──────────────────────────────────────────────────
 
@@ -417,43 +381,10 @@ class SppPrinterConnection(
         PrintLog.event("SPP 打印开始 mode=$mode halve=$halveRows 行=${raster.height}")
 
         try {
-            if (!send(CMD_STOP)) return PrintResult(false, "发送失败，连接可能已断开")
-            delay(100)
-            if (!send(CMD_ENABLE)) return PrintResult(false, "发送失败，连接可能已断开")
-            val t = thickness ?: DEFAULT_THICKNESS
-            send(cmdThickness(t))
-            send(CMD_WAKEUP)
-            send(CMD_ESC_INIT)
-
-            val fb = (feedBefore ?: FEED_BEFORE).coerceIn(0, 255)
-            val fa = (feedAfter ?: FEED_AFTER).coerceIn(0, 255)
-            sendAll(cmdFeed(fb))
-
-            // 图片通道：先行合并减半（2 行 OR 1 行），再用 m=2 双打
-            val data = if (halveRows) RasterEncoder.halveRows(raster) else raster
-            val h = data.height
-
-            // 光栅分块发送：单次 GS v 0 数据量超限会固字瀑布，每块独立头 + 块间短延迟
-            val w = data.widthBytes
-            var rowOffset = 0
-            while (rowOffset < h) {
-                val rows = minOf(RASTER_CHUNK_ROWS, h - rowOffset)
-                send(cmdRasterHeader(w, rows, mode))
-                val chunk = data.data.copyOfRange(
-                    rowOffset * w, (rowOffset + rows) * w
-                )
-                if (!send(chunk)) return PrintResult(false, "位图发送中断")
-                rowOffset += rows
-                delay(150)
-            }
-
-            sendAll(cmdFeed(fa))
-            send(CMD_STOP)
-
-            // ACK 超时动态计算（2026-08-11 借鉴 lztttt/QrintPrint-Android）：
-            // 基础 8s + 每行 5ms，上限 30s——打印失败不用傻等固定 120s
-            val ackTimeout = minOf(30_000L, 8_000L + h * 5L)
-            return waitAck(ackTimeout)
+            // 打印时序在 PrintJobRunner（与 BLE/Fake 同一份代码，2026-08-13 抽取）
+            return PrintJobRunner.printRaster(
+                io, raster, thickness, mode, halveRows, feedBefore, feedAfter
+            )
         } catch (e: Exception) {
             // 任何底层异常转为打印失败结果，绝不崩协程
             PrintLog.event("SPP 打印异常: ${e.javaClass.simpleName}: ${e.message}")
@@ -482,8 +413,8 @@ class SppPrinterConnection(
         }
         synchronized(rxBuffer) { rxBuffer.clear() }
         if (!send(bytes)) return emptyList()
-        delay(QUERY_SETTLE_MS)
-        return waitBytes(expectBytes, QUERY_TIMEOUT_MS)
+        delay(PrintJobRunner.QUERY_SETTLE_MS)
+        return waitBytes(expectBytes, PrintJobRunner.QUERY_TIMEOUT_MS)
     }
 
     // ── 状态轮询 ──────────────────────────────────────────────

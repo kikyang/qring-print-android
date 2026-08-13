@@ -1,6 +1,7 @@
 package com.qring.print
 
 import android.app.Activity
+import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Bundle
@@ -64,9 +65,10 @@ class HistoryActivity : Activity() {
         setContentView(root)
     }
 
-    /** 历史条目：缩略图 + 类型/标题/时间 + 重新打印按钮 */
+    /** 历史条目：缩略图 + 类型/标题/时间 + 重新打印/再编辑按钮 */
     private fun historyItem(job: HistoryStore.Job): LinearLayout {
         val item = Design.card()
+        val editable = !job.paramsJson.isNullOrBlank()   // 存了状态快照才可再编辑（#5a）
         item.addView(Design.row {
             val thumb = HistoryStore.thumbBitmap(job)
             val img = ImageView(this@HistoryActivity).apply {
@@ -93,16 +95,41 @@ class HistoryActivity : Activity() {
                 setPadding(0, Design.dp(2), 0, 0)
             })
             info.addView(TextView(this@HistoryActivity).apply {
-                text = "点击重新打印"
+                text = if (editable) "可重新打印，或继续编辑" else "可重新打印"
                 textSize = 11f
                 setTextColor(Design.PRIMARY)
                 setPadding(0, Design.dp(4), 0, 0)
             })
             addView(info, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         })
+        // 操作按钮行：重新打印（全类型可用）+ 再编辑（仅存了状态快照的类型，#5a）
+        item.addView(Design.row {
+            val reprintBtn = Design.ghostButton("🖨 重新打印")
+            addView(reprintBtn, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            reprintBtn.setOnClickListener { reprint(job) }
+            if (editable) {
+                val editBtn = Design.ghostButton("✏️ 再编辑")
+                addView(editBtn, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    marginStart = Design.dp(8)
+                })
+                editBtn.setOnClickListener { editJob(job) }
+            }
+        }.also {
+            it.layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = Design.dp(8)
+            }
+        })
         item.isClickable = true
         item.setOnClickListener { reprint(job) }
         return item
+    }
+
+    /** 再编辑：带 jobId 启动 MainActivity（CLEAR_TOP 复用栈内实例），恢复编辑页（#5a） */
+    private fun editJob(job: HistoryStore.Job) {
+        val intent = Intent(this, MainActivity::class.java)
+            .putExtra(MainActivity.EXTRA_EDIT_JOB, job.id)
+            .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        startActivity(intent)
     }
 
     /** 无损重打：载入光栅 → m=2 双打（与当时打印一致） */

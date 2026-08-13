@@ -1,4 +1,0 @@
-{
-  "desc": "sitemap 配置",
-  "rules": [{ "action": "allow", "page": "*" }]
-}

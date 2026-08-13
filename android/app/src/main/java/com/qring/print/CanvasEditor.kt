@@ -5,21 +5,22 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.Typeface
 import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * 自定义画布：文字/图片/条码元素拖拽排版（2026-08-12 合成自
+ * 自定义画布：文字/图片/条码/涂鸦笔画元素拖拽排版（2026-08-12 合成自
  * bzhou830/QringPrint uniapp、snowboys/QrintPrint-Windows、lztttt/QrintPrint-Android
- * 三方共识的画布功能；区别于 DrawCanvasView 的自由涂鸦——这里是元素排版）。
+ * 三方共识的画布功能；#5d 把自由涂鸦并入为 KIND_DRAW 元素，统一为单画布）。
  *
  * 逻辑坐标系 384 点宽（与打印头一致），纵向无限，渲染时自动裁剪到内容底。
  * 打印走 RasterEncoder.encode(bmp, NONE, THRESHOLD_IMAGE) 阈值通道（条码页同款）。
  */
 class CanvasElement(
-    var kind: Int,             // 0=文字 1=图片 2=条码
+    var kind: Int,             // 0=文字 1=图片 2=条码 3=涂鸦笔画
     var x: Float, var y: Float, // 左上角（384 逻辑坐标）
     var w: Float, var h: Float,
 ) {
@@ -32,10 +33,15 @@ class CanvasElement(
     var barcodeType: BarcodeGenerator.BarcodeType = BarcodeGenerator.TYPES[0]
     var barcodeContent: String = ""
 
+    // 涂鸦（#5d 统一画布：KIND_DRAW）：多段笔画，每段是一串可变逻辑坐标点 [x, y]
+    var strokes: MutableList<MutableList<FloatArray>> = ArrayList()
+    var strokeWidth: Float = 14f
+
     companion object {
         const val KIND_TEXT = 0
         const val KIND_IMAGE = 1
         const val KIND_BARCODE = 2
+        const val KIND_DRAW = 3
     }
 }
 
@@ -102,6 +108,21 @@ object CanvasEditor {
                 val fit = fitRect(bmp.width, bmp.height, el.w, el.h)
                 canvas.drawBitmap(bmp, null, RectF(el.x, el.y, el.x + fit.width(), el.y + fit.height()), Paint(Paint.FILTER_BITMAP_FLAG))
             }
+            CanvasElement.KIND_DRAW -> {
+                val p = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = Color.BLACK
+                    strokeWidth = el.strokeWidth
+                    style = Paint.Style.STROKE
+                    strokeCap = Paint.Cap.ROUND
+                    strokeJoin = Paint.Join.ROUND
+                }
+                for (stroke in el.strokes) {
+                    if (stroke.size < 2) continue
+                    val path = Path().apply { moveTo(stroke[0][0], stroke[0][1]) }
+                    for (i in 1 until stroke.size) path.lineTo(stroke[i][0], stroke[i][1])
+                    canvas.drawPath(path, p)
+                }
+            }
         }
     }
 
@@ -160,6 +181,18 @@ object CanvasEditor {
                     put("bt", el.barcodeType.label)
                     put("bc", el.barcodeContent)
                 }
+                if (el.kind == CanvasElement.KIND_DRAW) {
+                    val st = JSONArray()
+                    for (stroke in el.strokes) {
+                        val pts = JSONArray()
+                        for (pt in stroke) {
+                            pts.put(JSONArray().apply { put(pt[0]); put(pt[1]) })
+                        }
+                        st.put(pts)
+                    }
+                    put("st", st)
+                    put("sw", el.strokeWidth)
+                }
             }
             arr.put(o)
         }
@@ -190,6 +223,25 @@ object CanvasEditor {
                 el.barcodeType = BarcodeGenerator.TYPES.firstOrNull { it.label == o.optString("bt") }
                     ?: BarcodeGenerator.TYPES[0]
                 el.barcodeContent = o.optString("bc")
+            }
+            if (el.kind == CanvasElement.KIND_DRAW) {
+                val st = o.optJSONArray("st")
+                if (st != null) {
+                    val strokes = ArrayList<MutableList<FloatArray>>()
+                    for (i in 0 until st.length()) {
+                        val pts = st.optJSONArray(i) ?: continue
+                        val s = ArrayList<FloatArray>()
+                        for (j in 0 until pts.length()) {
+                            val p = pts.optJSONArray(j)
+                            if (p != null && p.length() >= 2) {
+                                s.add(floatArrayOf(p.optDouble(0).toFloat(), p.optDouble(1).toFloat()))
+                            }
+                        }
+                        if (s.isNotEmpty()) strokes.add(s)
+                    }
+                    el.strokes = strokes
+                }
+                el.strokeWidth = o.optDouble("sw", 14.0).toFloat()
             }
             out.add(el)
         }

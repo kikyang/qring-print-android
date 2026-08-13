@@ -20,6 +20,7 @@ object Settings {
     private const val KEY_OUTLINE_THICKNESS = "outline_thickness"
     private const val KEY_OUTLINE_SMOOTH = "outline_smooth"
     private const val KEY_OUTLINE_INVERT = "outline_invert"
+    private const val KEY_BARCODE_TYPE = "barcode_type"
 
     /** X1 浓度合法范围 0~2（实测 3/4 报 ER） */
     const val THICKNESS_MIN = 0
@@ -91,6 +92,22 @@ object Settings {
     var outlineInvert: Boolean
         get() = p().getBoolean(KEY_OUTLINE_INVERT, false)
         set(v) = p().edit().putBoolean(KEY_OUTLINE_INVERT, v).apply()
+
+    // ── 内容页参数记忆（#5b：浓度全局；抖动/增强等按内容类型分存）──
+
+    /** 上次使用的条码类型（format.name），下次打开条码页恢复 */
+    var barcodeType: String
+        get() = runCatching { p().getString(KEY_BARCODE_TYPE, null) ?: "QR_CODE" }
+            .getOrDefault("QR_CODE")
+        set(v) = p().edit().putString(KEY_BARCODE_TYPE, v).apply()
+
+    /** 保存某内容类型（text/image/card）的编辑页状态快照（JSON，格式同历史 paramsJson） */
+    fun saveContentPref(type: String, json: String) {
+        p().edit().putString("content_pref_$type", json).apply()
+    }
+
+    /** 读取某内容类型的编辑页状态快照；无则 null（首启/旧版本） */
+    fun loadContentPref(type: String): String? = p().getString("content_pref_$type", null)
 }
 
 /** 连接通道选择 */

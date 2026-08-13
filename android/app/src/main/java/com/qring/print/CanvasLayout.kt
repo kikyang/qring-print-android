@@ -34,6 +34,10 @@ class CanvasLayout(context: Context) : View(context) {
     private var lastX = 0f
     private var lastY = 0f
 
+    // #5d 统一画布：涂鸦模式。开启后触摸记录笔画到 KIND_DRAW 元素，退出时结算边界可拖拽。
+    var drawMode = false
+    private var drawingElement: CanvasElement? = null
+
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val w = MeasureSpec.getSize(widthMeasureSpec).coerceAtLeast(1)
         scale = w / CanvasEditor.WIDTH.toFloat()
@@ -64,6 +68,22 @@ class CanvasLayout(context: Context) : View(context) {
             MotionEvent.ACTION_DOWN -> {
                 val x = event.x / scale
                 val y = event.y / scale
+                if (drawMode) {
+                    // 涂鸦：起笔。首个落笔创建 KIND_DRAW 元素，之后续笔都并入它
+                    var el = drawingElement
+                    if (el == null) {
+                        el = CanvasElement(CanvasElement.KIND_DRAW, 0f, 0f, 0f, 0f)
+                        drawingElement = el
+                        elements.add(el)
+                        selected = el
+                        onSelect?.invoke(el)
+                    }
+                    el.strokes.add(mutableListOf(floatArrayOf(x, y)))
+                    lastX = x
+                    lastY = y
+                    invalidate()
+                    return true
+                }
                 val hit = elements.asReversed().firstOrNull { x in it.x..(it.x + it.w) && y in it.y..(it.y + it.h) }
                 if (hit != selected) {
                     selected = hit
@@ -76,9 +96,17 @@ class CanvasLayout(context: Context) : View(context) {
                 return true
             }
             MotionEvent.ACTION_MOVE -> {
-                val el = dragging ?: return true
                 val x = event.x / scale
                 val y = event.y / scale
+                if (drawMode) {
+                    val el = drawingElement ?: return true
+                    el.strokes.lastOrNull()?.add(floatArrayOf(x, y))
+                    lastX = x
+                    lastY = y
+                    invalidate()
+                    return true
+                }
+                val el = dragging ?: return true
                 el.x = (el.x + (x - lastX)).coerceIn(0f, CanvasEditor.WIDTH - el.w)
                 el.y = (el.y + (y - lastY)).coerceAtLeast(0f)
                 lastX = x
@@ -101,6 +129,43 @@ class CanvasLayout(context: Context) : View(context) {
         elements.add(el)
         selected = el
         onSelect?.invoke(el)
+        invalidate()
+    }
+
+    /** 进入/退出涂鸦模式。退出时按笔画结算元素边界（空笔画则移除），之后可拖拽/缩放 */
+    fun setDraw(on: Boolean) {
+        if (drawMode == on) return
+        drawMode = on
+        if (on) {
+            drawingElement = null
+        } else {
+            val el = drawingElement ?: return
+            drawingElement = null
+            if (el.strokes.isEmpty()) {
+                // 涂鸦会话没落笔：不留下零尺寸元素
+                elements.remove(el)
+                if (selected === el) {
+                    selected = null
+                    onSelect?.invoke(null)
+                }
+                return
+            }
+            var minX = Float.MAX_VALUE
+            var minY = Float.MAX_VALUE
+            var maxX = Float.MIN_VALUE
+            var maxY = Float.MIN_VALUE
+            for (stroke in el.strokes) for (pt in stroke) {
+                if (pt[0] < minX) minX = pt[0]
+                if (pt[1] < minY) minY = pt[1]
+                if (pt[0] > maxX) maxX = pt[0]
+                if (pt[1] > maxY) maxY = pt[1]
+            }
+            val m = el.strokeWidth / 2
+            el.x = (minX - m).coerceAtLeast(0f)
+            el.y = (minY - m).coerceAtLeast(0f)
+            el.w = (maxX - minX + el.strokeWidth).coerceAtLeast(10f)
+            el.h = (maxY - minY + el.strokeWidth).coerceAtLeast(10f)
+        }
         invalidate()
     }
 

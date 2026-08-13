@@ -11,8 +11,8 @@ android {
         applicationId = "com.qring.print"
         minSdk = 33          // Android 13+：BLE 新 API（旧 API 在 SDK34 编译时 HIDDEN）
         targetSdk = 34
-        versionCode = 11
-        versionName = "0.5.5"
+        versionCode = 12
+        versionName = "0.6.0"
     }
 
     // 正式签名（2026-08-11 生成 release.jks；密码在 android/keystore-password.txt）。
@@ -119,5 +119,11 @@ tasks.register<JavaExec>("runUnitTests") {
         "com.qring.print.DitherTest",
         "com.qring.print.CannyTest",
         "com.qring.print.MainActivityUiTest",
+        "com.qring.print.TemplateBuilderTest",
+        "com.qring.print.HistoryStoreTest",
+        "com.qring.print.SettingsTest",
+        "com.qring.print.FakePrinterTest",
+        "com.qring.print.FakePrinterE2ETest",
+        "com.qring.print.ImagePipelineBenchTest",
     )
 }

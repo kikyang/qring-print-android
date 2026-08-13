@@ -31,6 +31,8 @@ object HistoryStore {
         val mode: Int,
         val halve: Boolean,
         val thumbFile: String,
+        /** 打印时编辑页状态快照（JSON，供历史「再编辑」恢复；#5a）。旧记录无此字段为 null */
+        val paramsJson: String? = null,
     )
 
     @Volatile
@@ -63,8 +65,9 @@ object HistoryStore {
 
     // ── 记录 ──
 
-    /** 打印成功后记录：存光栅 bin（无损重打）+ 缩略图 */
-    fun add(type: String, title: String, raster: RasterData, thumb: Bitmap): Job {
+    /** 打印成功后记录：存光栅 bin（无损重打）+ 缩略图。
+     *  @param paramsJson 打印时编辑页状态快照（JSON），供历史「再编辑」恢复编辑页 */
+    fun add(type: String, title: String, raster: RasterData, thumb: Bitmap, paramsJson: String? = null): Job {
         val id = UUID.randomUUID().toString().substring(0, 12)
         val jobsDir = File(d(), "jobs")
         val thumbsDir = File(d(), "thumbs")
@@ -89,6 +92,7 @@ object HistoryStore {
             widthBytes = raster.widthBytes, height = raster.height,
             mode = 2, halve = true,
             thumbFile = thumbFile.absolutePath,
+            paramsJson = paramsJson,
         )
         val arr = readIndex()
         val obj = JSONObject().apply {
@@ -96,6 +100,7 @@ object HistoryStore {
             put("ts", job.ts); put("widthBytes", job.widthBytes); put("height", job.height)
             put("mode", job.mode); put("halve", job.halve)
             put("thumb", job.thumbFile)
+            if (paramsJson != null) put("params", paramsJson)
         }
         arr.put(0, obj)
         // 超限丢最旧（删 bin + thumb）
@@ -120,6 +125,7 @@ object HistoryStore {
                 ts = o.getLong("ts"), widthBytes = o.getInt("widthBytes"), height = o.getInt("height"),
                 mode = o.getInt("mode"), halve = o.getBoolean("halve"),
                 thumbFile = o.optString("thumb"),
+                paramsJson = if (o.has("params")) o.optString("params") else null,
             )
         }
     }
