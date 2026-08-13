@@ -1,1 +1,1 @@
-{"version":"0.6.1","notes":"v0.6.1：修复 OTA 检查更新失败（release 包缺 INTERNET 权限，蓝牙打印不受影响）"}
+{"version":"0.6.2","notes":"v0.6.2：连接固定 SPP 直连（修 AUTO 静默回退 BLE 导致条码发淡）+ 已连接状态显示真实通道 + 修正两处 BLE 误导字样"}

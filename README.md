@@ -20,12 +20,16 @@
 
 ## 下载 APK
 
-最新版见 [Releases](https://github.com/kikyang/qring-print-android/releases)（v0.6.1，0.88MB，需 Android 13+）。
+最新版见 [Releases](https://github.com/kikyang/qring-print-android/releases)（v0.6.2，0.88MB，需 Android 13+）。
 应用内「我的 → 关于 → 检查更新」可直接升级到新版本（检查走 jsDelivr，国内网络可用；
 发版后 2-3 小时内新版可能尚未被收录，属正常延迟）。
 
 ## 更新日志
 
+- **v0.6.2（2026-08-13）**：**连接固定 SPP 直连**——弃用 AUTO（SPP 失败时静默回退 BLE，
+  用户无感知但打印慢、墨色淡，是条码发淡的根因）；已连接状态显示**真实通道**
+  （SPP/BLE，替换误导的「蓝牙版本 BLE」）；修正扫描列表「（BLE 直接连接）」硬编码字样。
+  99 例测试全过
 - **v0.6.1（2026-08-13）**：**修复 OTA 检查更新失败**——release 包缺 INTERNET 权限
   （AGP debug 构建自动注入该权限、release 不注入，导致 release 版全部网络请求被拒，
   弹「检查更新失败：网络异常」；蓝牙打印不需要 INTERNET 故平时未暴露。手机实测
