@@ -2008,12 +2008,12 @@ class MainActivity : Activity() {
         page.addView(Design.card {
             addView(Design.sectionTitle("设备管理"))
             addView(Design.caption("已配对 / 扫描到的打印机，点一下连接"))
-            // 连接方式（2026-08-13 改：BLE 藏进调试台，主力 SPP。
-            // 固定 AUTO = SPP 优先、BLE 兜底——普通用户不用管通道，连不上自动切换；
-            // 需要 BLE（如调试台扫档）走「关于 → 调试台」里的 BLE 连接）
-            Settings.connectionMode = ConnectionMode.AUTO
+            // 连接方式（2026-08-13 定案：固定 SPP 直连，不用 AUTO——AUTO 会在 SPP 失败时
+            // 静默回退 BLE，用户无感知但打印慢、墨色淡（条码不清晰根因之一）。
+            // BLE 藏调试台：需要 BLE（如调试台扫档）走「关于 → 调试台」里的 BLE 连接）
+            Settings.connectionMode = ConnectionMode.SPP
             addView(Design.label("连接方式"))
-            addView(Design.caption("经典蓝牙（自动）：优先 SPP，连不上自动切 BLE"))
+            addView(Design.caption("经典蓝牙（SPP 直连）：不自动切换通道"))
             deviceArea = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL }
             addView(deviceArea, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
                 topMargin = Design.dp(8)
@@ -2381,7 +2381,7 @@ class MainActivity : Activity() {
             .filter { it.name?.startsWith("Qring") == true || it.name?.startsWith("QRING") == true }
             .sortedBy { it.name }
         if (nearby.isNotEmpty()) {
-            addDeviceGroupLabel("扫描到的打印机（BLE 直接连接）")
+            addDeviceGroupLabel("扫描到的打印机")
             for (dev in nearby) {
                 deviceArea.addView(deviceItem(dev))
             }
@@ -2532,10 +2532,12 @@ class MainActivity : Activity() {
                 statusBadge.setTextColor(Color.WHITE)
                 statusBadge.background = Design.rounded(Design.OK, Design.RADIUS_SM)
                 statusText.text = buildString {
-                    append("✅ 已连接 $name\n")
+                    // 2026-08-13：明确显示实际通道（原「蓝牙版本 $btVersion」在 X1 上
+                    // 10 FF 30 10 返回 "BLE"，与 SPP 直连矛盾造成「已连接末尾 BLE」误导）
+                    val ch = if (PrinterHolder.active is SppPrinterConnection) "SPP" else "BLE"
+                    append("✅ 已连接 $name（$ch）\n")
                     append("型号 ${printer.deviceModel.ifEmpty { "?" }} · 固件 ${printer.firmwareVersion.ifEmpty { "?" }}")
                     printer.batteryPercent?.let { append(" · 电量 $it%") }
-                    if (printer.btVersion.isNotEmpty()) append("\n蓝牙版本 ${printer.btVersion}")
                 }
                 statusText.setTextColor(Design.TEXT)
                 updateMachineStatus()

@@ -54,12 +54,13 @@ object Settings {
 
     /**
      * 连接通道（2026-08-11 加，X1 存在多版本：透传版走 BLE、经典版走 SPP）。
-     * 默认 AUTO：先试 BLE 透传，空壳（无响应）自动回退经典蓝牙。
-     * 旧数据无此 key 时 valueOf 抛异常，兜底 AUTO。
+     * 2026-08-13 用户定案：**固定 SPP 直连，不用 AUTO**（AUTO 会在 SPP 失败时静默
+     * 回退 BLE，用户无感知但打印慢、墨色淡）。BLE 仅调试台手动连接用。
+     * 旧数据无 key / 存过 AUTO 时兜底 SPP。
      */
     var connectionMode: ConnectionMode
-        get() = runCatching { ConnectionMode.valueOf(p().getString(KEY_CONNECTION_MODE, null) ?: "AUTO") }
-            .getOrDefault(ConnectionMode.AUTO)
+        get() = runCatching { ConnectionMode.valueOf(p().getString(KEY_CONNECTION_MODE, null) ?: "SPP") }
+            .getOrDefault(ConnectionMode.SPP)
         set(v) = p().edit().putString(KEY_CONNECTION_MODE, v.name).apply()
 
     /**
