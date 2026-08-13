@@ -204,17 +204,35 @@ BLE 传输：1M 像素光栅 ≈ 125KB 数据，按 32B/包 × 80ms 节奏传输
 │       ├── CanvasLayout.kt           # 元素排版：拖拽/命中/缩放/置顶/涂鸦模式
 │       ├── UpdateManager.kt          # OTA 检查更新（jsDelivr + GitHub fallback）
 │       ├── SelfTest.kt               # 打印测试页
+│       ├── BarcodeGenerator.kt       # 条码/二维码（zxing，QR + 7 种一维码）
+│       ├── PrintLog.kt               # 日志：内存环形缓冲 + 关键事件落盘
+│       ├── HistoryStore.kt / HistoryActivity.kt  # 打印历史（无损光栅重打）
+│       ├── Settings.kt               # 打印设置持久化（浓度/走纸/阈值等）
+│       ├── DebugActivity.kt          # 调试台（收发 hex 日志/原始命令）
 │       ├── Design.kt                 # 微信风设计系统（含线性图标）
 │       └── MainActivity.kt           # 三 Tab 主界面
 │   └── app/src/test/java/com/qring/print/  # 99 例测试
-│       ├── QringProtocolTest.kt / DitherTest.kt / CannyTest.kt
-│       └── MainActivityUiTest.kt     # Robolectric 界面测试
+│       ├── QringProtocolTest.kt      # 协议字节/状态位/指令构造（15 例）
+│       ├── DitherTest.kt / CannyTest.kt  # 抖动/边缘检测算法（13 例）
+│       ├── TemplateBuilderTest.kt / HistoryStoreTest.kt / SettingsTest.kt
+│       ├── MainActivityUiTest.kt     # Robolectric 界面测试（19 例）
+│       ├── FakePrinterTest.kt        # 虚拟打印机协议引擎（21 例）
+│       ├── FakePrinterE2ETest.kt     # 端到端链路（15 例）
+│       └── ImagePipelineBenchTest.kt # 图像管线性能基准（3 例）
 ├── docs/
 │   ├── architecture.md   # 人类可读的架构说明（推荐先读）
 │   ├── protocol.md       # 完整协议（指令表/状态位/时序/光栅编码）
-│   └── 实物联调手册.md    # 联调操作手册
+│   ├── recon.md          # 逆向调研笔记
+│   ├── upstream-audit-2026-08-12.md / -13.md  # 上游三项目源码审计
+│   ├── 实物联调手册.md    # 联调操作手册
+│   └── 待办事项清单.md    # 项目四象限待办
 ├── reference/qrintprint/ # QrintPrint 源码归档（MIT，仅参考）
-└── 电脑端验证脚本见仓库 temp 说明（BLE 扫描/打印/协议核对）
+├── releases/             # 正式签名 APK（OTA 下载源）
+├── screenshots/          # 界面预览截图
+├── client/               # 电脑端替代客户端（规划中）
+├── dev-log/              # 开发日志（按日）
+├── temp/                 # 验证脚本/截图等临时产物（不入库）
+└── version.json          # OTA 版本清单
 ```
 
 ## 关键协议要点（X1 实测）

@@ -2,17 +2,19 @@
 
 > 给人类看的架构文档：不解释每一行代码，而是讲清楚"这套系统是怎么拼起来的、每个部件为什么存在"。
 > 读完本文你应该能回答：一条错题从手机屏幕到热敏纸，中间经历了什么？
+> 最近同步：v0.6.3（2026-08-13）。
 
 ---
 
 ## 1. 系统全景
 
 ```
-┌───────────────────┐     BLE（蓝牙低功耗）      ┌────────────────────┐
+┌───────────────────┐    经典蓝牙 SPP（主力）      ┌────────────────────┐
 │  安卓客户端 (App)  │ ───────────────────────▶ │  错题小印 X1 打印机  │
-│  （本仓库的代码）   │   写特征 FF02 / 通知 FF01  │  （ISSC 透传芯片）   │
+│  （本仓库的代码）   │   RFCOMM 串口 1024B/1ms     │  （ISSC 透传芯片）   │
 └───────────────────┘ ◀─────────────────────── └────────────────────┘
         │ 查询响应 / ACK / 故障上报
+        └─ BLE 透传（兜底）：FF02 写 / FF01 通知，96B/40ms
 ```
 
 **核心事实（X1 机型实测）**：打印机的"大脑"只认字节流。手机把一串精心编排的字节
@@ -25,16 +27,16 @@
 
 ## 2. 通信层：双通道（BLE 透传 + 经典蓝牙 SPP）
 
-打印机是**双模**设备（BLE + 经典蓝牙 SPP 都有），但 X1 存在**多个软件版本**，
-不同版本的控制通道不同（2026-08-11 实测确认）：
+打印机是**双模**设备（BLE + 经典蓝牙 SPP 都有），2026-08-13 定案：
+**SPP 为主力、BLE 兜底**（早前以 BLE 为主是过时结论，见下）。
 
-- **BLE 透传通道**（本机 X1，固件 V1.05 实测）：
-  - `FF00` 服务，`FF02` 写特征（手机 → 打印机），`FF01` 通知特征（打印机 → 手机）
-  - 连接必须指定 `TRANSPORT_LE`（双模设备默认走 BR/EDR 会连不上 GATT）
-  - 查询/打印全功能
-- **SPP 通道**（2026-08-11 实测修正）：RFCOMM 标准串口，**单向**——
-  **能打印**（用户真机验证正常出纸）、**查询无响应**（10 FF 40/70 不回复，
-  型号显示 "?"）。早前"SPP 空壳"结论系只测查询、误判
+- **SPP 通道（主力）**：RFCOMM 标准串口，传输快（1024B/1ms）、查询实测可响应
+  （`10 FF 40/50/70` 正常返回）。SPP 快 → 行间隔短 → 打印头残热积累 → 同浓度下
+  墨色更深更实（用户实测"又黑又快"）。早前"SPP 单向、查询无响应"结论系
+  BLE 占用时连接失败的假象
+- **BLE 透传通道（兜底）**：`FF00` 服务，`FF02` 写 / `FF01` 通知，
+  连接必须指定 `TRANSPORT_LE`（双模设备默认走 BR/EDR 会连不上 GATT）。
+  打印效果比 SPP 差（慢、墨色淡），入口藏进「关于 → 调试台」供扫档/诊断
 
 **客户端同时支持两条通道**（`PrinterConnection` 接口 + 双实现）：
 
@@ -45,15 +47,18 @@ PrinterConnection（接口）
 ```
 
 连接分派（`PrinterHolder.connect`）：
-- **手动指定**：BLE / 经典蓝牙，界面可选
-- **AUTO 自动探测**：先连 BLE → 用状态查询（`10 FF 40`）验证通道是否"活着"——
-  空壳机器的特征就是"GATT 能连、命令无人消费"（查询 1.5s 超时返回 null）→
-  断开自动回退 SPP。UI 侧连接对话框实时显示阶段文案 + 进度条
-  （AUTO 最坏约 40 秒：BLE 30s + SPP 17s 预算，典型 3~8 秒）
+- **手动指定**：BLE / 经典蓝牙 / AUTO，设置里可选
+- **AUTO（默认）= SPP 优先、BLE 兜底**（2026-08-13 实测反转）：先连 SPP，
+  连上即视为可用（能打印即成功，不强制查询验证——单向机型查询无响应也不影响
+  打印）；SPP 失败（纯 BLE 版无 SPP 服务/信道被拒）回退 BLE 透传。UI 侧连接
+  对话框实时显示阶段文案 + 进度条（AUTO 最坏约 60 秒：SPP 31s + BLE 30s 预算，
+  典型 3~8 秒）
+- 打印机单连接约束：切通道前先断开另一通道的 active 连接（`closeOther`）
 
 发送节奏（踩过最深的坑之一：**节奏决定打印质量**）：
-- BLE：32 字节/包 + 80ms 间隔（透传芯片缓冲小，快速写会丢包 → 光栅残缺乱码）
-- SPP：RFCOMM 无 MTU 限制，1024 字节/块 + 1ms（照搬 HarmonyOS 参考实现）
+- BLE：96 字节/包 + 40ms 间隔（2026-08-13 手机扫档定稿：96B 稳定、128B 卡死；
+  比旧基线 32B/80ms 快 6 倍）
+- SPP：RFCOMM 无 MTU 限制，1024 字节/块 + 1ms
 
 ---
 
@@ -130,13 +135,16 @@ Bitmap → argb 数组 + 透明度掩码（alpha≥128 视为实体像素）
 
 ```
 STOP（复位）→ ENABLE（使能）→ 浓度 → 唤醒 → ESC@（解析器复位）
-→ 前走纸 10 点 → 光栅数据（按 64 行分块，块间停顿）→ 后走纸 100 点
+→ 前走纸 10 点 → 光栅数据（按 64 行分块，SPP 块间 0ms / BLE 块间 150ms）→ 后走纸 100 点
 → STOP → 等 ACK（0xAA）
 ```
 
 几个容易踩的坑（都已定稿规避）：
 - **不要发 ENABLE2（1F B2 10）**：X1 固件不识别，会被文本引擎渲染成"固"字
-- **光栅数据要分块**（每块 ≤64 行）：一次发太多，固件缓冲溢出 → "固"字瀑布
+- **光栅数据要分块**（每块 ≤64 行）：单块 >~255 行固件状态机错乱回落文本引擎 →
+  "固"字瀑布；64 ≪ 255，两通道安全
+- **块间延迟按通道**：SPP 0ms（传输快，行间隔短残热积累墨色更实）、
+  BLE 150ms（传输慢需等待）。150ms 块间 delay 是打印时间瓶颈，故 SPP 下置 0
 - **没有预热条**：实测文字不预热本来就黑，全黑块预热不预热都不黑，预热条纯浪费纸
 - **打印期间停止状态轮询**：查询字节混进打印数据流会毁掉整张图
 
@@ -160,12 +168,12 @@ STOP（复位）→ ENABLE（使能）→ 浓度 → 唤醒 → ESC@（解析器
 手写区横线设计成**练习本风格**（横线在格子底边，行高 10mm）——
 因为错题卡打印出来是给学生手写订正用的，行距不够会写不下。
 
-**图片页的两个"自绘"入口**（结果都加入图片通道统一预览/打印）：
-- **🖌 涂鸦**（`DrawCanvasView`）：白底黑笔手指绘图，路径列表管理（清空/撤销），转 384 宽位图
-- **📐 元素排版**（`CanvasLayout` + `CanvasEditor`）：文字 / 图片 / 条码元素自由拖拽排版、
-  缩放、置顶，可存为模板复用（模板 JSON 存 SharedPreferences，图片元素不持久化——
-  内容来自相册 URI，模板只存位置/尺寸/文字/条码参数）。核心设计：**逻辑坐标系 384 点宽**
-  （与打印头一致），预览和打印共用同一渲染管线（`CanvasEditor.render`），所见即所得。
+**图片页的自绘入口（v0.6 起单入口）**：🖌 **统一画布**（`CanvasEditor` + `CanvasLayout`）
+——涂鸦笔画与文字 / 图片 / 条码元素自由拖拽排版、缩放、置顶，可存为模板复用
+（模板 JSON 存 SharedPreferences，图片元素不持久化——内容来自相册 URI，模板只存
+位置/尺寸/文字/条码/笔画参数）。核心设计：**逻辑坐标系 384 点宽**（与打印头一致），
+预览和打印共用同一渲染管线（`CanvasEditor.render`），所见即所得。
+「我的模板」宫格展示已存版式（缩略图 + 点击进画布继续编辑 + 长按删除）。
 
 ---
 
@@ -181,8 +189,9 @@ STOP（复位）→ ENABLE（使能）→ 浓度 → 唤醒 → ESC@（解析器
 | 自动预览确认 | 所有打印先渲染实际效果图，确认才打，取消零耗纸 |
 | 连接/解析进度反馈 | 连接进度条 + 阶段文案；文档解析转圈 + 已提取段/行计数，可取消 |
 | 文档解析竞态防护 | 新任务取消旧协程（大文件晚完成会覆盖新结果），CancellationException 不吞 |
-| BLE 分包 + 节奏控制 | 32B/包 + 80ms 间隔，防丢包；SPP 1024B/块 + 1ms |
-| **自动化测试（36 例）** | `gradle runUnitTests`：协议字节/抖动/Canny（纯 JVM）+ Robolectric 界面测试（启动/预览/画布/入口断言）。注意：Gradle Test worker 在中文路径下 classpath 失效，用 JavaExec 任务绕开（见 README） |
+| BLE 分包 + 节奏控制 | 96B/包 + 40ms 间隔，防丢包；SPP 1024B/块 + 1ms |
+| 三通道共享打印时序 | PrintJobRunner 统一编排，BLE/SPP/FakePrinter 三通道跑同一份代码——实物联调只剩 GATT 写 + 热敏头物理两个未知量 |
+| **自动化测试（99 例）** | `gradle runUnitTests`：协议（15）/算法（13）/模板·历史·设置（13）/Robolectric 界面（19）/虚拟打印机协议引擎（21）/端到端链路（15）/性能基准（3）。注意：Gradle Test worker 在中文路径下 classpath 失效，用 JavaExec 任务绕开（见 README） |
 | **R8 瘦身** | release 开 minify（AGP 8.5.2），APK 6.4MB → 0.87MB；zxing 自带 consumer rules，mapping 验证功能类全保留 |
 
 ### 6.1 OTA 检查更新（v0.5.2 起）
@@ -200,6 +209,10 @@ STOP（复位）→ ENABLE（使能）→ 浓度 → 唤醒 → ESC@（解析器
 
 发版流程固定为：bump 版本 → 测试 → 构建 → **APK 提交进仓库 `releases/`（.gitignore 加例外）+ version.json 更新** → push → gh release → 微信推送。实测教训：jsDelivr data API 的 tag 索引和 @main 分支指针缓存都不可靠（purge 不掉），**下载必须走 @v{tag} 路径**。
 
+**安装权限（v0.6.3）**：Android 13+ 装 APK 需 `REQUEST_INSTALL_PACKAGES` 权限 +
+用户授权「允许安装未知应用」；未授权自动跳系统设置页引导。0.6.1/0.6.2 存量用户
+首次升级需手动授权一次（旧包未带权限声明，弹不出引导）。
+
 ---
 
 ## 7. 代码地图
@@ -207,9 +220,10 @@ STOP（复位）→ ENABLE（使能）→ 浓度 → 唤醒 → ESC@（解析器
 ```
 android/app/src/main/java/com/qring/print/
 ├── PrinterConnection.kt      # 连接通道抽象接口（双通道统一入口）
-├── BlePrinterConnection.kt   # BLE 透传通道：FF02 写/FF01 通知/TRANSPORT_LE/分包节奏
+├── BlePrinterConnection.kt   # BLE 透传通道：FF02 写/FF01 通知/TRANSPORT_LE/96B·40ms 分包
 ├── SppPrinterConnection.kt   # 经典蓝牙通道：RFCOMM + daemon 读线程 + 1024B 分包
-├── PrinterHolder.kt          # 双实例 + AUTO 探测分派（空壳验证回退）
+├── PrinterHolder.kt          # 双实例 + AUTO 分派（SPP 优先/BLE 兜底）+ 测试注入
+├── PrintJobRunner.kt         # 打印时序编排（三通道共享，块间延迟按通道）
 ├── QringProtocol.kt          # 协议字典：所有指令字节、状态位解析、光栅头构造
 ├── RasterEncoder.kt          # 光栅编码：Bitmap→48字节/行、行合并、预览渲染、多图拼接
 ├── Dither.kt                 # 抖动：无 / Floyd-Steinberg / Atkinson
@@ -222,24 +236,30 @@ android/app/src/main/java/com/qring/print/
 ├── LegacyDocExtractor.kt     # 老格式 doc/xls（OLE2 复合文档解析）
 ├── TemplateBuilder.kt        # 错题卡模板（含手写区版式）
 ├── TemplateLibrary.kt        # 课程表/单词表/每日计划模板
+├── SystemTemplates.kt        # 系统模板内置 JSON 注册表（v0.6 数据驱动）
 ├── MathWorksheet.kt          # 口算题生成（随机算式 + 2 列大字号排版，借鉴 lztttt）
-├── DrawCanvasView.kt         # 画布涂鸦：手指绘图/清空/撤销 → 图片通道
-├── CanvasEditor.kt           # 元素排版：元素模型 + 384 宽渲染 + 模板 JSON 存取
-├── CanvasLayout.kt           # 元素排版视图：拖拽/命中检测/缩放/置顶
+├── CanvasEditor.kt           # 统一画布：元素模型 + 384 宽渲染 + 模板 JSON 存取（含涂鸦笔画）
+├── CanvasLayout.kt           # 画布视图：拖拽/命中检测/缩放/置顶/涂鸦模式
 ├── UpdateManager.kt          # OTA：jsDelivr 检查 + 下载 + FileProvider 安装（GitHub fallback）
 ├── BarcodeGenerator.kt       # 条码/二维码（zxing，QR + 7 种一维码，内容实时校验）
 ├── SelfTest.kt               # 打印测试页（浓度线/线条/灰阶渐变/文字）
-├── Design.kt                 # UI 设计系统：微信小程序风（灰底白卡/微信绿/8px 圆角/线性图标）
-├── MainActivity.kt           # 主界面：三 Tab（首页/打印/我的）+ 全部交互
-├── DebugActivity.kt          # 调试台：收发 hex 日志/原始命令（藏于"我的→关于"）
 ├── PrintLog.kt               # 日志：内存环形缓冲 + 关键事件落盘
 ├── HistoryStore.kt / HistoryActivity.kt  # 打印历史（无损光栅重打 + 缩略图）
-└── Settings.kt               # 打印设置持久化（浓度/走纸/连接模式/阈值/描边参数）
+├── Settings.kt               # 打印设置持久化（浓度/走纸/连接模式/阈值/描边参数）
+├── DebugActivity.kt          # 调试台：收发 hex 日志/原始命令/BLE 直连（藏于"我的→关于"）
+├── Design.kt                 # UI 设计系统：微信小程序风（灰底白卡/微信绿/8px 圆角/线性图标）
+├── FakePrinter.kt            # 虚拟打印机协议引擎（字节流状态机，测试/联调仿真）
+├── FakePrinterConnection.kt  # 虚拟打印机连接（PrinterConnection 实现，测试注入）
+└── MainActivity.kt           # 主界面：三 Tab（首页/打印/我的）+ 全部交互
 
-test/ 目录（36 例，`gradle runUnitTests`）：
+test/ 目录（99 例，`gradle runUnitTests`）：
 ├── QringProtocolTest.kt      # 协议字节/状态位/指令构造（15 例）
 ├── DitherTest.kt / CannyTest.kt  # 抖动/边缘检测算法（13 例）
-└── MainActivityUiTest.kt     # Robolectric 界面测试（8 例：启动/图标文件/预览/排版/模板/入口）
+├── TemplateBuilderTest.kt / HistoryStoreTest.kt / SettingsTest.kt  # 模板/历史/设置（13 例）
+├── MainActivityUiTest.kt     # Robolectric 界面测试（19 例：启动/图标/预览/排版/模板/参数记忆/画布/宫格/分工）
+├── FakePrinterTest.kt        # 虚拟打印机协议引擎（21 例）
+├── FakePrinterE2ETest.kt     # 端到端链路（15 例）
+└── ImagePipelineBenchTest.kt # 图像管线性能基准（3 例）
 ```
 
 数据流一句话总结：
@@ -249,8 +269,9 @@ test/ 目录（36 例，`gradle runUnitTests`）：
 
 ## 8. 已知边界
 
-- 验证过 **X1 机型两个通道**：BLE 透传版（本机，全功能）+ 经典蓝牙 SPP（2026-08-11 真机验证：
-  能打印出纸正常，查询无响应属单向通道特性）；同源 BY 系列理论兼容，未逐一验证
+- 验证过 **X1 机型两个通道**：BLE 透传版（本机，全功能）+ 经典蓝牙 SPP（2026-08-13 实测：
+  能打印出纸、查询 10 FF 40/50/70 可响应，**SPP 为默认主力**；早前"查询无响应"系
+  BLE 占用时连接失败的假象）；同源 BY 系列理论兼容，未逐一验证
 - 浓度范围 X1 是 0~2（其他机型可能不同，如 Windows 版提到 0~7）
 - 老格式 .doc/.xls 提取是简化实现（.doc 复杂分片/文本框不提取；.xls 只取字符串表不还原行列），复杂文档建议转存 docx/xlsx
 - 打印头电流限制导致全黑大块显色偏淡是硬件特性，非软件可完全修复
