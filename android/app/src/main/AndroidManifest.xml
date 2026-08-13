@@ -12,6 +12,9 @@
     <!-- OTA 检查更新/下载 APK（2026-08-13 补：v0.5.2 起缺这行，release 包无 INTERNET 权限
          导致 OTA 全部失败——AGP debug 构建自动注入该权限、release 不注入，所以只在 release 暴露） -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- OTA 安装 APK（2026-08-13 补：Android 13+ ACTION_VIEW 装 APK 必须声明此权限
+         + 用户授权「允许安装未知应用」，否则最后一步报无权限安装） -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <application
         android:label="错题小印打印"

@@ -1,1 +1,1 @@
-{"version":"0.6.2","notes":"v0.6.2：连接固定 SPP 直连（修 AUTO 静默回退 BLE 导致条码发淡）+ 已连接状态显示真实通道 + 修正两处 BLE 误导字样"}
+{"version":"0.6.3","notes":"v0.6.3：修复 OTA 更新最后一步提示无权限安装（Android 13+ 需 REQUEST_INSTALL_PACKAGES 权限 + 授权允许安装未知应用，首次自动引导授权）"}

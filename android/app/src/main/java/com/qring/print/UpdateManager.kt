@@ -6,6 +6,7 @@ import android.util.Log
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.provider.Settings
 import android.widget.Toast
 import androidx.core.content.FileProvider
 import kotlinx.coroutines.CoroutineScope
@@ -173,6 +174,21 @@ object UpdateManager {
             }
             if (ok != null) {
                 withContext(Dispatchers.Main) {
+                    // 2026-08-13：Android 13+ 装 APK 需「允许安装未知应用」授权。
+                    // 未授权则跳系统设置页引导，用户开完回来重新点更新即装（一次性，之后免授权）。
+                    if (!activity.packageManager.canRequestPackageInstalls()) {
+                        Toast.makeText(
+                            activity, "首次安装需先授权「允许安装未知应用」", Toast.LENGTH_LONG
+                        ).show()
+                        activity.startActivity(
+                            Intent(
+                                Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                                Uri.parse("package:${activity.packageName}")
+                            )
+                        )
+                        onDone(false)
+                        return@withContext
+                    }
                     try {
                         val uri = FileProvider.getUriForFile(
                             activity, "${activity.packageName}.fileprovider", ok
