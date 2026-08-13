@@ -49,13 +49,15 @@
 
 ## 界面预览
 
-| 首页 | 文字打印 | 图片打印 |
+| 首页（启动台） | 文字打印 | 图片打印 |
 |---|---|---|
-| ![首页](screenshots/home_v040.png) | ![文字](screenshots/text_v040.png) | ![图片](screenshots/image_v040.png) |
+| ![首页](screenshots/home_v061.png) | ![文字](screenshots/text_v061.png) | ![图片](screenshots/image_v061.png) |
 
-| 错题卡 | 条码打印 | 我的（设置/历史/设备） |
+| 条码打印 | 文档打印 | 其它（模板/错题卡） |
 |---|---|---|
-| ![错题卡](screenshots/card_v040.png) | ![条码](screenshots/barcode_v040.png) | ![我的](screenshots/mine_v040.png) |
+| ![条码](screenshots/barcode_v061.png) | ![文档](screenshots/doc_v061.png) | ![其它](screenshots/other_v061.png) |
+
+> 截图取自 Android 13（小米 24122RKC7C），内容为默认空状态；「我的」页含蓝牙配对列表（涉及个人设备信息）故不放预览。
 
 ## 功能
 
