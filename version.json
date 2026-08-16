@@ -1,1 +1,1 @@
-{"version":"0.6.3","notes":"v0.6.3：修复 OTA 更新最后一步提示无权限安装（Android 13+ 需 REQUEST_INSTALL_PACKAGES 权限 + 授权允许安装未知应用，首次自动引导授权）"}
+{"version":"0.7.0","notes":"v0.7.0：Markdown 打印 + 照片旋转/缩放 + 高分辨率增强（Sauvola/Wolf/Bradley 三算法可选）"}

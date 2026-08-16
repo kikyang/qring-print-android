@@ -24,3 +24,6 @@ dev-log/
 # ── OTA 发布 APK（jsDelivr 拉取用，需进仓库）──
 !releases/
 !releases/*.apk
+
+# ── 临时调试产物（不入库）──
+temp/

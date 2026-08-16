@@ -11,6 +11,13 @@ enum class InkRemoveMode(val label: String) {
     BOTH("红蓝都去"),
 }
 
+/** 自适应二值化算法（2026-08-16 加，对齐 lztttt v1.5.0 三算法） */
+enum class EnhanceAlgorithm(val label: String) {
+    SAUVOLA("标准"),
+    WOLF("手写"),
+    BRADLEY("快速"),
+}
+
 /**
  * 错题照片增强引擎 —— 仿"印先森一键去手写/去背景"的核心算法。
  *
@@ -106,15 +113,119 @@ object ImageEnhancer {
         return Bitmap.createBitmap(bitmap, left, top, nw, nh)
     }
 
+    /** 高分辨率处理时长边上限（控制积分图内存，2048 足够还原 384 打印细节） */
+    const val HIGH_RES_MAX_EDGE = 2048
+
     /**
-     * 一键增强：灰度拉伸 + Sauvola 二值化。
-     * @return 光栅数据，可直接打印
+     * 高分辨率灰度光照补偿。
+     * 返回保持处理分辨率的灰度图（长边 ≤ [HIGH_RES_MAX_EDGE]），白底黑字。
+     * 调用方应再缩放至 384 宽后二值化，避免先降采样丢小字。
      */
-    fun enhanceToRaster(bitmap: Bitmap): RasterData {
-        val gray = RasterEncoder.extractGrayPublic(bitmap)
-        val stretched = stretch(gray)
-        val binary = sauvolaBinary(stretched)
-        return RasterEncoder.packPublic(binary, stretched.width, stretched.height)
+    fun enhanceHighResGray(source: Bitmap, maxEdge: Int = HIGH_RES_MAX_EDGE): Bitmap {
+        var work = source
+        var owned = false
+        val longEdge = maxOf(source.width, source.height)
+        if (longEdge > maxEdge) {
+            val scale = maxEdge.toFloat() / longEdge
+            val nw = maxOf(1, Math.round(source.width * scale))
+            val nh = maxOf(1, Math.round(source.height * scale))
+            work = Bitmap.createScaledBitmap(source, nw, nh, true)
+            owned = true
+        }
+        try {
+            val w = work.width
+            val h = work.height
+            val pixels = IntArray(w * h)
+            work.getPixels(pixels, 0, w, 0, 0, w, h)
+            val gray = IntArray(w * h)
+            for (i in pixels.indices) {
+                val c = pixels[i]
+                gray[i] = (Color.red(c) * 299 + Color.green(c) * 587 + Color.blue(c) * 114) / 1000
+            }
+            val bgWindow = maxOf(75, minOf(w, h) / 8) or 1
+            val bg = computeLocalMean(gray, w, h, bgWindow)
+            val norm = IntArray(w * h)
+            for (i in gray.indices) {
+                val bgVal = bg[i].coerceAtLeast(1)
+                norm[i] = (gray[i].toFloat() / bgVal.toFloat() * 255f).toInt().coerceIn(0, 255)
+            }
+            val colors = IntArray(w * h)
+            for (i in norm.indices) {
+                val v = norm[i]
+                colors[i] = (0xFF shl 24) or (v shl 16) or (v shl 8) or v
+            }
+            val result = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+            result.setPixels(colors, 0, w, 0, 0, w, h)
+            return result
+        } finally {
+            if (owned) work.recycle()
+        }
+    }
+
+    /**
+     * 一键增强：高分辨率光照补偿 → 缩到 384 宽 → 所选自适应二值化。
+     * 默认 Sauvola 标准档，行为覆盖原「直方图拉伸 + Sauvola」，但小字保留更好。
+     *
+     * @param algorithm 0=Sauvola（标准印刷），1=Wolf（铅笔手写/白纸噪声），2=Bradley（最快）
+     * @param strength 0=弱 1=标准 2=强；映射到窗口 21/25/31、k 0.15/0.20/0.30
+     */
+    fun enhanceToRaster(
+        bitmap: Bitmap,
+        algorithm: Int = 0,
+        strength: Int = 1,
+    ): RasterData {
+        val highRes = enhanceHighResGray(bitmap)
+        val w = highRes.width
+        val h = highRes.height
+        val highResOwned = highRes !== bitmap
+        val scaled: Bitmap
+        if (w == WIDTH_DOTS) {
+            scaled = highRes
+        } else {
+            val th = maxOf(1, Math.round(h.toFloat() * WIDTH_DOTS / w))
+            scaled = Bitmap.createScaledBitmap(highRes, WIDTH_DOTS, th, true)
+            if (highResOwned) highRes.recycle()
+        }
+        try {
+            val gray = RasterEncoder.extractGrayPublic(scaled)
+            val windowSize = when (strength) {
+                0 -> 21
+                2 -> 31
+                else -> 25
+            }
+            val k = when (strength) {
+                0 -> 0.15
+                2 -> 0.30
+                else -> 0.20
+            }
+            val binary = enhanceGray(gray, windowSize = windowSize, k = k, algorithm = algorithm)
+            return RasterEncoder.packPublic(binary, gray.width, gray.height)
+        } finally {
+            if (scaled !== highRes) scaled.recycle()
+        }
+    }
+
+    /**
+     * 在已缩放到打印宽度的灰度图上做光照补偿 + 自适应二值化。
+     * @param algorithm 0=Sauvola 1=Wolf 2=Bradley
+     */
+    fun enhanceGray(
+        gray: GrayImage,
+        windowSize: Int = 25,
+        k: Double = 0.20,
+        algorithm: Int = 0,
+        denoise: Boolean = true,
+    ): ByteArray {
+        val w = gray.width
+        val h = gray.height
+        val norm = normalizeBackground(gray.data, w, h, windowSize)
+        val binary = when (algorithm) {
+            1 -> wolfBinary(norm, w, h, windowSize, k)
+            2 -> bradleyBinary(norm, w, h, windowSize, k)
+            else -> sauvolaBinaryData(norm, w, h, windowSize, k)
+        }
+        if (denoise) denoiseBinary(binary, w, h)
+        return binary
     }
 
     /**
@@ -186,6 +297,146 @@ object ImageEnhancer {
 
                 val threshold = mean * (1 + k * (std / 128.0 - 1))
                 out[y * w + x] = if (gray.data[y * w + x] < threshold) 1 else 0
+            }
+        }
+        return out
+    }
+
+    // ── 私有：光照补偿与三种二值化（积分图实现，适配高分辨率）──
+
+    private fun normalizeBackground(data: IntArray, w: Int, h: Int, baseWindow: Int): IntArray {
+        val bgWindow = maxOf(baseWindow * 4, 75) or 1
+        val bg = computeLocalMean(data, w, h, bgWindow)
+        val norm = IntArray(w * h)
+        for (i in data.indices) {
+            val bgVal = bg[i].coerceAtLeast(1)
+            norm[i] = (data[i].toFloat() / bgVal.toFloat() * 255f).toInt().coerceIn(0, 255)
+        }
+        return norm
+    }
+
+    private fun sauvolaBinaryData(norm: IntArray, w: Int, h: Int, windowSize: Int, k: Double): ByteArray {
+        val sw = windowSize or 1
+        val mean = computeLocalMean(norm, w, h, sw)
+        val std = computeLocalStd(norm, w, h, sw, mean)
+        val out = ByteArray(w * h)
+        for (i in norm.indices) {
+            val m = mean[i]
+            val s = std[i]
+            val t = m * (1.0 + k * (s / 128.0 - 1.0))
+            out[i] = if (norm[i] < t) 1 else 0
+        }
+        return out
+    }
+
+    private fun wolfBinary(norm: IntArray, w: Int, h: Int, windowSize: Int, k: Double): ByteArray {
+        val sw = windowSize or 1
+        val mean = computeLocalMean(norm, w, h, sw)
+        val std = computeLocalStd(norm, w, h, sw, mean)
+        var minVal = 255
+        for (v in norm) if (v < minVal) minVal = v
+        val r = 128.0
+        val out = ByteArray(w * h)
+        for (i in norm.indices) {
+            val m = mean[i]
+            val s = std[i]
+            val t = m - k * (m - minVal) * (1.0 - (s / r).coerceIn(0.0, 1.0))
+            out[i] = if (norm[i] < t) 1 else 0
+        }
+        return out
+    }
+
+    private fun bradleyBinary(norm: IntArray, w: Int, h: Int, windowSize: Int, k: Double): ByteArray {
+        val sw = windowSize or 1
+        val mean = computeLocalMean(norm, w, h, sw)
+        val t = (k * 100.0).coerceIn(1.0, 50.0)
+        val out = ByteArray(w * h)
+        for (i in norm.indices) {
+            val m = mean[i]
+            out[i] = if (norm[i] < m * (1.0 - t / 100.0)) 1 else 0
+        }
+        return out
+    }
+
+    private fun denoiseBinary(binary: ByteArray, w: Int, h: Int) {
+        if (w < 3 || h < 3) return
+        val copy = binary.copyOf()
+        for (y in 1 until h - 1) {
+            for (x in 1 until w - 1) {
+                val idx = y * w + x
+                if (copy[idx].toInt() == 1) {
+                    var blackCount = 0
+                    for (dy in -1..1) {
+                        for (dx in -1..1) {
+                            if (dx == 0 && dy == 0) continue
+                            if (copy[(y + dy) * w + (x + dx)].toInt() == 1) blackCount++
+                        }
+                    }
+                    if (blackCount == 0) binary[idx] = 0
+                }
+            }
+        }
+    }
+
+    /** 积分图局部均值 */
+    private fun computeLocalMean(data: IntArray, w: Int, h: Int, window: Int): IntArray {
+        val half = window / 2
+        val cols = w + 1
+        val integral = IntArray(cols * (h + 1))
+        for (y in 1..h) {
+            var rowSum = 0
+            for (x in 1..w) {
+                rowSum += data[(y - 1) * w + (x - 1)]
+                integral[y * cols + x] = integral[(y - 1) * cols + x] + rowSum
+            }
+        }
+        val out = IntArray(w * h)
+        for (y in 0 until h) {
+            val y1 = (y - half).coerceAtLeast(0)
+            val y2 = (y + half).coerceAtMost(h - 1)
+            for (x in 0 until w) {
+                val x1 = (x - half).coerceAtLeast(0)
+                val x2 = (x + half).coerceAtMost(w - 1)
+                val area = (x2 - x1 + 1) * (y2 - y1 + 1)
+                out[y * w + x] = (integral[(y2 + 1) * cols + (x2 + 1)] -
+                        integral[y1 * cols + (x2 + 1)] -
+                        integral[(y2 + 1) * cols + x1] +
+                        integral[y1 * cols + x1]) / area
+            }
+        }
+        return out
+    }
+
+    /** 积分图局部标准差：Var = E(X²) - E(X)² */
+    private fun computeLocalStd(data: IntArray, w: Int, h: Int, window: Int, mean: IntArray): IntArray {
+        val half = window / 2
+        val cols = w + 1
+        val sq = LongArray(w * h)
+        for (i in data.indices) sq[i] = data[i].toLong() * data[i]
+        val integralSq = LongArray(cols * (h + 1))
+        for (y in 1..h) {
+            var rowSum = 0L
+            for (x in 1..w) {
+                rowSum += sq[(y - 1) * w + (x - 1)]
+                integralSq[y * cols + x] = integralSq[(y - 1) * cols + x] + rowSum
+            }
+        }
+        val out = IntArray(w * h)
+        for (y in 0 until h) {
+            val y1 = (y - half).coerceAtLeast(0)
+            val y2 = (y + half).coerceAtMost(h - 1)
+            for (x in 0 until w) {
+                val x1 = (x - half).coerceAtLeast(0)
+                val x2 = (x + half).coerceAtMost(w - 1)
+                val area = (x2 - x1 + 1) * (y2 - y1 + 1)
+                val sumSq = integralSq[(y2 + 1) * cols + (x2 + 1)] -
+                        integralSq[y1 * cols + (x2 + 1)] -
+                        integralSq[(y2 + 1) * cols + x1] +
+                        integralSq[y1 * cols + x1]
+                val meanSq = sumSq.toDouble() / area
+                val m = mean[y * w + x]
+                val variance = (meanSq - m.toDouble() * m).coerceAtLeast(0.0)
+                out[y * w + x] = kotlin.math.sqrt(variance).toInt()
             }
         }
         return out

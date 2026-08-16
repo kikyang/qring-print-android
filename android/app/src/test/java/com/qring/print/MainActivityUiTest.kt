@@ -13,6 +13,7 @@ import android.widget.LinearLayout
 import android.widget.RadioButton
 import android.widget.RadioGroup
 import android.widget.ScrollView
+import android.widget.SeekBar
 import android.widget.TextView
 import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.assertEquals
@@ -83,6 +84,17 @@ class MainActivityUiTest {
         if (root is ViewGroup) {
             for (i in 0 until root.childCount) {
                 findPreviewImage(root.getChildAt(i))?.let { return it }
+            }
+        }
+        return null
+    }
+
+    /** DFS 按 max 找 SeekBar（阈值 max=255 / 缩放 max=150 / 线稿灵敏度 max=100） */
+    private fun findSeekBarWithMax(root: View, max: Int): SeekBar? {
+        if (root is SeekBar && root.max == max) return root
+        if (root is ViewGroup) {
+            for (i in 0 until root.childCount) {
+                findSeekBarWithMax(root.getChildAt(i), max)?.let { return it }
             }
         }
         return null
@@ -545,6 +557,44 @@ class MainActivityUiTest {
             "无模板时应显示引导文案",
             findText(root, "还没有自定义模板：图片页 → 🖌 画布 → 排版 → 「💾 存为模板」"),
         )
+    }
+
+    // ── #5f 照片旋转+缩放 / Markdown 打印（2026-08-14 加）─────────────────
+
+    @Test
+    fun `内容页参数记忆 恢复图片页旋转与缩放`() {
+        // 预置 rotate:90 / scale:150 → 构建图片页时应恢复
+        val ctx = ApplicationProvider.getApplicationContext<android.content.Context>()
+        Settings.init(ctx)
+        Settings.saveContentPref("image",
+            """{"type":"image","rotate":90,"scale":150,"outline":false}""")
+        val activity = Robolectric.buildActivity(MainActivity::class.java).setup().get()
+        val root = activity.window.decorView
+        clickBottomTab(activity, "打印")
+        (findText(root, "图片") as? RadioButton)?.performClick()
+        idle()
+        val rot90 = findText(root, "90°") as? RadioButton
+        assertNotNull("旋转 90° 按钮应存在", rot90)
+        assertTrue("旋转应恢复为 90°", rot90!!.isChecked)
+        val scaleBar = findSeekBarWithMax(root, 150)
+        assertNotNull("缩放滑杆应存在（max=150）", scaleBar)
+        assertEquals("缩放应恢复为 150%", 100, scaleBar!!.progress)
+    }
+
+    @Test
+    fun `历史再编辑 恢复Markdown编辑页`() {
+        val id = seedHistory("Markdown", """{"type":"markdown","content":"# 标题\n正文内容"}""")
+        val intent = Intent(ApplicationProvider.getApplicationContext(), MainActivity::class.java)
+            .putExtra(MainActivity.EXTRA_EDIT_JOB, id)
+        val activity = Robolectric.buildActivity(MainActivity::class.java, intent).setup().get()
+        val root = activity.window.decorView
+        idle()
+        val docTab = findText(root, "文档") as? RadioButton
+        assertNotNull("文档 Tab 应存在", docTab)
+        assertTrue("应切到文档 Tab", docTab!!.isChecked)
+        val input = findEditTextByHint(root, "粘贴 Markdown 文本（或选择 .md 文件）")
+        assertNotNull("Markdown 输入框应存在", input)
+        assertEquals("Markdown 内容应恢复", "# 标题\n正文内容", input!!.text.toString())
     }
 
 }

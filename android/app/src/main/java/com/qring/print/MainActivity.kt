@@ -8,6 +8,7 @@ import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanResult
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -107,6 +108,8 @@ class MainActivity : Activity() {
     private var currentDocTitle: String = ""
     private var currentDocRaster: RasterData? = null
     private var currentDocMode = 0
+    /** Markdown 输入框（文档 Tab 内，2026-08-14 加） */
+    private lateinit var mdInput: EditText
     /** 文档解析协程引用：新解析先取消旧的，防止旧协程结果覆盖新文件（2026-08-11 大文件竞态修复） */
     private var docParseJob: kotlinx.coroutines.Job? = null
     private lateinit var modeGroup: RadioGroup
@@ -128,6 +131,13 @@ class MainActivity : Activity() {
     private lateinit var outlineSensitivityValue: TextView
     // #5c 图片页「高级设置」折叠容器（默认收起；线稿模式勾选时自动展开）
     private lateinit var advancedContainer: LinearLayout
+    // 照片旋转+缩放（2026-08-14 加）：旋转常用区、缩放高级折叠区
+    private lateinit var rotationGroup: RadioGroup
+    private lateinit var scaleBar: SeekBar
+    private lateinit var scaleValue: TextView
+    // 增强算法/强度（2026-08-16 加，lztttt v1.5.0 三算法）
+    private lateinit var enhanceAlgoGroup: RadioGroup
+    private lateinit var enhanceStrengthGroup: RadioGroup
     // 错题卡区
     private lateinit var reasonInput: EditText
     private lateinit var knowledgeInput: EditText
@@ -168,6 +178,7 @@ class MainActivity : Activity() {
     private val REQ_IMAGE = 1002
     private val REQ_DOC = 1003
     private val REQ_CANVAS_IMAGE = 1004
+    private val REQ_MD = 1005
 
     companion object {
         const val PAGE_HOME = 0
@@ -252,6 +263,12 @@ class MainActivity : Activity() {
                 save("img_trim.png", imagePreviewRaster(RasterEncoder.encode(ImageEnhancer.trimWhiteEdges(testPhotoMargin), DitherMode.FLOYD_STEINBERG)))
                 save("img_trim_ref.png", imagePreviewRaster(RasterEncoder.encode(testPhotoMargin, DitherMode.FLOYD_STEINBERG)))
                 save("img_enhance.png", imagePreviewRaster(RasterEncoder.encode(RasterEncoder.rasterToPreviewBitmap(ImageEnhancer.enhanceToRaster(testPhoto)), DitherMode.NONE)))
+                // 照片旋转+缩放（2026-08-14 加）：验证 90/180 旋转与 50%/200% 缩放
+                save("img_rot90.png", imagePreviewRaster(RasterEncoder.encode(ImageTransform.rotate(testPhoto, 90), DitherMode.FLOYD_STEINBERG)))
+                save("img_rot180.png", imagePreviewRaster(RasterEncoder.encode(ImageTransform.rotate(testPhoto, 180), DitherMode.FLOYD_STEINBERG)))
+                save("img_scale50.png", imagePreviewRaster(RasterEncoder.encode(ImageTransform.fitToPaperWidth(testPhoto, 50), DitherMode.FLOYD_STEINBERG)))
+                save("img_scale200.png", imagePreviewRaster(RasterEncoder.encode(ImageTransform.fitToPaperWidth(testPhoto, 200), DitherMode.FLOYD_STEINBERG)))
+                save("img_rot90_scale50.png", imagePreviewRaster(RasterEncoder.encode(ImageTransform.apply(testPhoto, 90, 50), DitherMode.FLOYD_STEINBERG)))
                 // 错题卡：带图（塞入测试图）+ 不带图
                 selectedImages.clear()
                 selectedImages.add(testPhoto)
@@ -355,6 +372,18 @@ class MainActivity : Activity() {
                     val lines = XlsxTextExtractor.extract(this@MainActivity, Uri.fromFile(xlsxFile))
                     save("xlsx_parsed.png", RasterEncoder.rasterToPreviewBitmap(RasterEncoder.encodeText(lines.joinToString("\n"))))
                 }.onFailure { PrintLog.event("xlsx 自检失败: ${it.javaClass.simpleName}: ${it.message}") }
+                // Markdown（2026-08-14 加）：标题+列表+代码块+引用+分割线+粗斜体混排
+                save("markdown_all.png", imagePreviewRaster(RasterEncoder.encode(
+                    MarkdownRenderer.render(MarkdownParser.parse(
+                        "# 错题小印 Markdown 自检\n" +
+                        "\n**加粗** 与 *斜体* 与 `code` 混排，[链接](https://example.com)\n" +
+                        "\n- 项目一\n- 项目二\n" +
+                        "\n1. 第一项\n2. 第二项\n" +
+                        "\n> 引用一行文字\n" +
+                        "\n```kotlin\nval x = 1\n# 这不是标题\n```\n" +
+                        "\n---\n" +
+                        "\n普通段落收尾")),
+                    DitherMode.NONE, RasterEncoder.THRESHOLD_TEXT)))
 
                 // 页面快照（离线渲染 View 树成 PNG，验证布局/配色/图标，不受窗口遮挡影响）
                 fun snapshot(view: View, name: String) {
@@ -795,6 +824,13 @@ class MainActivity : Activity() {
                 defaultIndex = 0,
             ) { autoRefreshImagePreview() }
             addView(modeGroup)
+            // 旋转（2026-08-14 加）：仅旋转，自动适应 384 宽
+            addView(Design.label("旋转"))
+            rotationGroup = Design.segmentGroup(
+                listOf("0°" to 0, "90°" to 90, "180°" to 180, "270°" to 270),
+                defaultIndex = 0,
+            ) { autoRefreshImagePreview() }
+            addView(rotationGroup)
             // 打印浓度：全局（Settings.thickness），图片页就近可调（与「我的」页同步）
             addView(Design.label("打印浓度（深浅）"))
             val thicknessGroup = Design.segmentGroup(
@@ -864,11 +900,48 @@ class MainActivity : Activity() {
             advancedContainer.addView(thresholdBar, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
                 topMargin = Design.dp(2)
             })
+            // 增强算法/强度（2026-08-16 加，仅一键增强时生效）
+            advancedContainer.addView(Design.label("增强算法（一键增强时生效）"))
+            enhanceAlgoGroup = Design.segmentGroup(
+                EnhanceAlgorithm.entries.map { it.label to it },
+                defaultIndex = 0,
+            ) { autoRefreshImagePreview() }
+            advancedContainer.addView(enhanceAlgoGroup)
+            advancedContainer.addView(Design.label("增强强度"))
+            enhanceStrengthGroup = Design.segmentGroup(
+                listOf("弱" to 0, "标准" to 1, "强" to 2),
+                defaultIndex = 1,
+            ) { autoRefreshImagePreview() }
+            advancedContainer.addView(enhanceStrengthGroup)
+            // 缩放（2026-08-14 加）：50%~200%，>100% 中心放大细节、<100% 白底居中留白
+            advancedContainer.addView(Design.row {
+                addView(Design.label("缩放（50%~200%）"))
+                scaleValue = Design.label("100%")
+                addView(scaleValue, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    gravity = Gravity.END
+                })
+            })
+            scaleBar = SeekBar(this@MainActivity).apply {
+                max = 150
+                progress = 50
+                setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                    override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
+                        scaleValue.text = "${progress + 50}%"
+                    }
+                    override fun onStartTrackingTouch(sb: SeekBar?) {}
+                    override fun onStopTrackingTouch(sb: SeekBar) {
+                        autoRefreshImagePreview()
+                    }
+                })
+            }
+            advancedContainer.addView(scaleBar, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = Design.dp(2)
+            })
             // 线稿模式（xyprt 移植 2026-08-11）：独立管线，不经过灰度/对比度；
             // 勾选时置灰冲突选项（抖动/消除笔/裁边/增强/阈值）并自动展开高级区
             outlineCheck = Design.check("✏️ 线稿模式（只打线条）")
             outlineCheck.setOnCheckedChangeListener { _, checked ->
-                val disabled = listOf(modeGroup, inkGroup, trimCheck, enhanceCheck, thresholdBar)
+                val disabled = listOf(modeGroup, inkGroup, trimCheck, enhanceCheck, thresholdBar, enhanceAlgoGroup, enhanceStrengthGroup)
                 disabled.forEach { it.isEnabled = !checked }
                 outlineOptions.visibility = if (checked) View.VISIBLE else View.GONE
                 if (checked) {
@@ -1793,7 +1866,7 @@ class MainActivity : Activity() {
         col.addView(Design.card {
             addView(Design.sectionTitle("文档打印"))
             addView(Design.caption("PDF 逐页图片打印 · Word/Excel/TXT 文本打印（支持老格式 doc/xls）"))
-            val pickBtn = Design.outlineButton("📄 选择文档（PDF / docx / xlsx / doc / xls / txt）")
+            val pickBtn = Design.outlineButton("📄 选择文档（PDF / docx / xlsx / doc / xls / txt / md）")
             addView(pickBtn, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
                 topMargin = Design.dp(8)
             })
@@ -1808,10 +1881,56 @@ class MainActivity : Activity() {
                         "application/msword",                       // .doc 老格式（解析会提示不支持）
                         "application/vnd.ms-excel",                  // .xls 老格式
                         "text/plain",                                // .txt
+                        "text/markdown", "text/x-markdown",          // .md（2026-08-14 加）
                     ))
                 }
                 startActivityForResult(intent, REQ_DOC)
             }
+        })
+
+        // Markdown 打印（2026-08-14 加，文档 Tab 内）：粘贴为主 + .md 文件为辅
+        col.addView(Design.card {
+            addView(Design.sectionTitle("Markdown 打印"))
+            addView(Design.caption("支持标题 / 列表 / 加粗 / 代码块 / 引用 / 分割线 · 粘贴为主"))
+            mdInput = Design.input("粘贴 Markdown 文本（或选择 .md 文件）", lines = 6)
+            addView(mdInput, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = Design.dp(4)
+            })
+            addView(Design.row {
+                val pasteBtn = Design.outlineButton("📋 粘贴")
+                val fileBtn = Design.outlineButton("📄 选 .md")
+                val printMdBtn = Design.outlineButton("🖨 打印 Markdown")
+                addView(pasteBtn, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                addView(fileBtn, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    marginStart = Design.dp(6)
+                })
+                addView(printMdBtn, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    marginStart = Design.dp(6)
+                })
+                pasteBtn.setOnClickListener {
+                    val clip = getSystemService(CLIPBOARD_SERVICE) as? ClipboardManager
+                    val text = clip?.primaryClip
+                        ?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.text?.toString()
+                    if (text.isNullOrBlank()) {
+                        docStatus.setTextColor(Design.ERROR)
+                        docStatus.text = "剪贴板没有文本"
+                    } else {
+                        mdInput.setText(text)
+                        docStatus.setTextColor(Design.TEXT)
+                        docStatus.text = "已粘贴 ${text.length} 字符"
+                    }
+                }
+                fileBtn.setOnClickListener {
+                    val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
+                        type = "text/markdown"
+                        putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("text/markdown", "text/x-markdown", "text/plain"))
+                    }
+                    startActivityForResult(intent, REQ_MD)
+                }
+                printMdBtn.setOnClickListener { doPrintMarkdown() }
+            }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = Design.dp(8)
+            })
         })
 
         col.addView(Design.card {
@@ -1865,6 +1984,12 @@ class MainActivity : Activity() {
                         onProgress("已读取 $n 行…")
                     }
                     RasterEncoder.encodeText(lines.joinToString("\n")) to 0
+                }
+                lower.endsWith(".md") || lower.endsWith(".markdown") -> {
+                    // Markdown（2026-08-14 加）：自写解析 + 384 宽渲染，走图片通道 m=2
+                    val text = readTextLimited(this@MainActivity, uri)
+                    RasterEncoder.encode(MarkdownRenderer.render(MarkdownParser.parse(text)),
+                        DitherMode.NONE, RasterEncoder.THRESHOLD_TEXT) to 2
                 }
                 lower.endsWith(".txt") || lower.endsWith(".text") -> {
                     // 流式读 + 大小上限（2026-08-11：readBytes 全量读入大文件会 OOM 闪退）
@@ -2221,8 +2346,8 @@ class MainActivity : Activity() {
             })
             refreshCanvasEditor()
         }
-        // 文档（PDF / Word / Excel）：选中即异步解析 + 预览
-        if (requestCode == REQ_DOC && resultCode == RESULT_OK) {
+        // 文档（PDF / Word / Excel / Markdown）：选中即异步解析 + 预览
+        if ((requestCode == REQ_DOC || requestCode == REQ_MD) && resultCode == RESULT_OK) {
             val uri = data?.data ?: return
             val name = queryDisplayName(uri) ?: "文档"
             currentDocUri = uri
@@ -2579,14 +2704,17 @@ class MainActivity : Activity() {
         return RasterEncoder.rasterToPreviewBitmap(half, verticalScale = 2)
     }
 
-    /** 图片预处理：裁白边 + 消除笔，再拼接 + 抖动/增强/描边 */
+    /** 图片预处理：旋转→裁白边→缩放→消除笔，再拼接 + 抖动/增强/描边 */
     private fun encodeSelectedImages(images: List<Bitmap>): RasterData {
+        val rotation = groupIndex(rotationGroup, 0)
+        val scale = scaleBar.progress + 50
         // 描边独立管线（最优先，2026-08-11 加）：不经过裁边/消除笔/灰度，
         // 直接在拼接图上做边缘检测（xyprt toMono OUTLINE 分支语义）
         if (outlineCheck.isChecked) {
             val layout = (layoutGroup.checkedRadioButtonId.takeIf { it != -1 }
                 ?.let { layoutGroup.findViewById<RadioButton>(it)?.tag as? Int }) ?: 1
-            val composed = if (images.size > 1) RasterEncoder.composeImages(images, layout) else images[0]
+            val transformed = images.map { ImageTransform.apply(it, rotation, scale) }
+            val composed = if (transformed.size > 1) RasterEncoder.composeImages(transformed, layout) else transformed[0]
             val method = (outlineMethodGroup.checkedRadioButtonId.takeIf { it != -1 }
                 ?.let { outlineMethodGroup.findViewById<RadioButton>(it)?.tag as? OutlineMethod })
                 ?: Settings.outlineMethod
@@ -2606,11 +2734,19 @@ class MainActivity : Activity() {
         val inkMode = (inkGroup.checkedRadioButtonId.takeIf { it != -1 }
             ?.let { inkGroup.findViewById<RadioButton>(it)?.tag as? InkRemoveMode })
             ?: InkRemoveMode.NONE
-        val trimmed = if (trimCheck.isChecked) images.map { ImageEnhancer.trimWhiteEdges(it) } else images
-        val cleaned = if (inkMode != InkRemoveMode.NONE) trimmed.map { ImageEnhancer.removeInk(it, inkMode) } else trimmed
+        // 旋转 → 裁白边 → 缩放（缩放放裁边后：<100% 的白边留白不会被裁掉）
+        val transformed = images.map { img ->
+            val rotated = ImageTransform.rotate(img, rotation)
+            val trimmed = if (trimCheck.isChecked) ImageEnhancer.trimWhiteEdges(rotated) else rotated
+            ImageTransform.fitToPaperWidth(trimmed, scale)
+        }
+        val cleaned = if (inkMode != InkRemoveMode.NONE) transformed.map { ImageEnhancer.removeInk(it, inkMode) } else transformed
         val composed = if (cleaned.size > 1) RasterEncoder.composeImages(cleaned, layout) else cleaned[0]
         return if (enhanceCheck.isChecked) {
-            ImageEnhancer.enhanceToRaster(composed)
+            val algo = (enhanceAlgoGroup.checkedRadioButtonId.takeIf { it != -1 }
+                ?.let { enhanceAlgoGroup.findViewById<RadioButton>(it)?.tag as? EnhanceAlgorithm })
+                ?: EnhanceAlgorithm.SAUVOLA
+            ImageEnhancer.enhanceToRaster(composed, algorithm = algo.ordinal, strength = groupIndex(enhanceStrengthGroup, 1))
         } else {
             val mode = (modeGroup.checkedRadioButtonId.takeIf { it != -1 }
                 ?.let { modeGroup.findViewById<RadioButton>(it)?.tag as? DitherMode })
@@ -2815,6 +2951,10 @@ class MainActivity : Activity() {
             put("ink", groupEnumName(inkGroup, InkRemoveMode.NONE))
             put("trim", trimCheck.isChecked)
             put("enhance", enhanceCheck.isChecked)
+            put("enhanceAlgo", groupEnumName(enhanceAlgoGroup, EnhanceAlgorithm.SAUVOLA))
+            put("enhanceStrength", groupIndex(enhanceStrengthGroup, 1))
+            put("rotate", groupIndex(rotationGroup, 0))
+            put("scale", scaleBar.progress + 50)
             put("threshold", thresholdBar.progress)
             put("outline", outlineCheck.isChecked)
             put("outlineMethod", groupEnumName(outlineMethodGroup, Settings.outlineMethod))
@@ -2896,6 +3036,11 @@ class MainActivity : Activity() {
                 restoreGroup(inkGroup, p.optString("ink", InkRemoveMode.NONE.name))
                 trimCheck.isChecked = p.optBoolean("trim")
                 enhanceCheck.isChecked = p.optBoolean("enhance")
+                restoreGroup(enhanceAlgoGroup, p.optString("enhanceAlgo", EnhanceAlgorithm.SAUVOLA.name))
+                restoreGroup(enhanceStrengthGroup, p.optInt("enhanceStrength", 1))
+                restoreGroup(rotationGroup, p.optInt("rotate", 0))
+                scaleBar.progress = (p.optInt("scale", 100) - 50).coerceIn(0, 150)
+                scaleValue.text = "${scaleBar.progress + 50}%"
                 thresholdBar.progress = p.optInt("threshold", Settings.threshold)
                 outlineCheck.isChecked = p.optBoolean("outline")
                 if (outlineCheck.isChecked) {
@@ -2938,6 +3083,11 @@ class MainActivity : Activity() {
                 selectBarcodeType(type)
                 barcodeInput.setText(p.optString("content"))
                 renderBarcodePreview()
+            }
+            "markdown" -> {
+                subTabDoc.isChecked = true
+                mdInput.setText(p.optString("content"))
+                docStatus.text = "已恢复 Markdown 编辑内容"
             }
             else -> return
         }
@@ -2983,6 +3133,11 @@ class MainActivity : Activity() {
             restoreGroup(inkGroup, p.optString("ink", InkRemoveMode.NONE.name))
             trimCheck.isChecked = p.optBoolean("trim")
             enhanceCheck.isChecked = p.optBoolean("enhance")
+            restoreGroup(enhanceAlgoGroup, p.optString("enhanceAlgo", EnhanceAlgorithm.SAUVOLA.name))
+            restoreGroup(enhanceStrengthGroup, p.optInt("enhanceStrength", 1))
+            restoreGroup(rotationGroup, p.optInt("rotate", 0))
+            scaleBar.progress = (p.optInt("scale", 100) - 50).coerceIn(0, 150)
+            scaleValue.text = "${scaleBar.progress + 50}%"
             thresholdBar.progress = p.optInt("threshold", Settings.threshold)
             outlineCheck.isChecked = p.optBoolean("outline")
             if (outlineCheck.isChecked) {
@@ -3062,6 +3217,52 @@ class MainActivity : Activity() {
                 PrintLog.event("图片打印异常: ${e.javaClass.simpleName}: ${e.message}")
                 imageStatus.setTextColor(Design.ERROR)
                 imageStatus.text = "预览生成失败：${e.javaClass.simpleName} ${e.message}"
+            }
+        }
+    }
+
+    /** Markdown 文本 → 光栅（IO 线程渲染，防长文卡 UI） */
+    private suspend fun renderMarkdownRaster(text: String): RasterData =
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val bmp = MarkdownRenderer.render(MarkdownParser.parse(text))
+            RasterEncoder.encode(bmp, DitherMode.NONE, RasterEncoder.THRESHOLD_TEXT)
+        }
+
+    /** Markdown 状态快照（历史「再编辑」恢复编辑页用） */
+    private fun markdownParamsJson(): String? = try {
+        JSONObject().apply {
+            put("type", "markdown")
+            put("content", mdInput.text.toString())
+        }.toString()
+    } catch (e: Exception) { null }
+
+    /** Markdown 打印：粘贴/文件内容 → 渲染 → 预览确认 → 打印（图片通道 m=2） */
+    private fun doPrintMarkdown() {
+        val text = mdInput.text.toString()
+        if (text.isBlank()) {
+            docStatus.setTextColor(Design.ERROR)
+            docStatus.text = "请先粘贴或输入 Markdown 内容"
+            return
+        }
+        docStatus.setTextColor(Design.TEXT)
+        docStatus.text = "正在生成预览 ..."
+        scope.launch {
+            try {
+                val raster = renderMarkdownRaster(text)
+                val bmp = imagePreviewRaster(raster)
+                docPreview.setImageBitmap(bmp)
+                val title = text.lineSequence().firstOrNull { it.isNotBlank() }
+                    ?.trim()?.take(20) ?: "Markdown"
+                val desc = "${raster.widthBytes * 8}×${raster.height} 点，约 ${"%.0f".format(raster.height / 8.0)}mm 高"
+                previewConfirmDialog("确认打印 Markdown（$desc）", bmp) {
+                    doPrintConfirmed(raster, mode = 2, halveRows = true, okMessage = "Markdown 打印完成",
+                        statusView = docStatus, historyType = "Markdown", historyTitle = title,
+                        paramsJson = markdownParamsJson())
+                }
+            } catch (e: Exception) {
+                PrintLog.event("Markdown 打印异常: ${e.javaClass.simpleName}: ${e.message}")
+                docStatus.setTextColor(Design.ERROR)
+                docStatus.text = "Markdown 渲染失败：${e.javaClass.simpleName} ${e.message}"
             }
         }
     }
