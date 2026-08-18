@@ -386,9 +386,8 @@ class MainActivityUiTest {
     }
 
     @Test
-    fun `图片页高级设置默认折叠点击展开`() {
-        // #5c：默认只露 增强/抖动/浓度，排列方式等收「高级设置」，点击展开
-        // 显式 seed outline:false，避免同进程其它用例的 outline:true 残留导致自动展开
+    fun `图片工作台默认只显示常用面板点击排版展开`() {
+        // 2026-08-18 图片工作台：底部 Tab 默认「常用」，其余面板收起
         val ctx = ApplicationProvider.getApplicationContext<android.content.Context>()
         Settings.init(ctx)
         Settings.saveContentPref("image", """{"type":"image","outline":false}""")
@@ -401,18 +400,17 @@ class MainActivityUiTest {
         // 常用项默认可见
         assertNotNull("一键增强应可见", findText(root, "✨ 一键增强（去背景/阴影/手写，拍试卷推荐）"))
         assertNotNull("打印浓度应在图片页", findText(root, "打印浓度（深浅）"))
-        // 高级区默认收起：断言容器（标签的父级）为 GONE。
-        // 注意不能断言标签自身——GONE 父容器不会改写子视图的 visibility 标志。
+        // 排版面板默认收起：断言「排列方式」所在面板为 GONE
         val layoutLabel = findText(root, "排列方式")
         assertNotNull("排列方式标签应存在（树中）", layoutLabel)
         val container = layoutLabel!!.parent as View
-        assertEquals("高级区默认收起", View.GONE, container.visibility)
+        assertEquals("排版面板默认收起", View.GONE, container.visibility)
 
-        val advBtn = findText(root, "⚙️ 高级设置 ▸")
-        assertNotNull("高级设置按钮应存在", advBtn)
-        advBtn!!.performClick()
+        val layoutTab = findText(root, "排版") as? RadioButton
+        assertNotNull("排版 Tab 应存在", layoutTab)
+        layoutTab!!.performClick()
         idle()
-        assertEquals("点击后展开高级区", View.VISIBLE, container.visibility)
+        assertEquals("点击排版后显示排列方式", View.VISIBLE, container.visibility)
     }
 
     @Test

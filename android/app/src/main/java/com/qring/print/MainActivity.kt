@@ -32,6 +32,7 @@ import android.widget.Button
 import android.widget.RadioButton
 import android.widget.RadioGroup
 import android.widget.ScrollView
+import android.widget.HorizontalScrollView
 import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
@@ -101,6 +102,14 @@ class MainActivity : Activity() {
     // 图片区
     private lateinit var imagePreview: ImageView
     private lateinit var imageStatus: TextView
+    // 图片工作台（2026-08-18 加，v0.7.2）
+    private var selectedImageIndex = 0
+    private lateinit var thumbContainer: LinearLayout
+    private lateinit var imageTabs: RadioGroup
+    private lateinit var imagePanelCommon: LinearLayout
+    private lateinit var imagePanelEffect: LinearLayout
+    private lateinit var imagePanelLayout: LinearLayout
+    private lateinit var imagePanelMore: LinearLayout
     // 文档区（PDF / Word / Excel，2026-08-11 加）
     private lateinit var docPreview: ImageView
     private lateinit var docStatus: TextView
@@ -778,291 +787,392 @@ class MainActivity : Activity() {
 
     // ── 图片内容块（#5c：默认只露 增强/抖动/浓度，其余收「高级设置」折叠；去专业说法）──
     private fun buildImageContent(): LinearLayout {
-        val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
 
-        col.addView(Design.card {
+        // ── 顶栏：标题 + 打印（WYSIWYG 工作台）──
+        root.addView(Design.row {
             addView(Design.sectionTitle("图片打印"))
-            addView(Design.caption("多选图自动拼接省纸 · 画布可涂鸦/加文字排版"))
-            addView(Design.row {
-                val pickBtn = Design.outlineButton("🖼 选图")
-                val cropBtn = Design.outlineButton("✂ 裁剪")
-                val canvasBtn = Design.outlineButton("🖌 画布")
-                val clearBtn = Design.ghostButton("清除")
-                addView(pickBtn, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-                addView(cropBtn, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                    marginStart = Design.dp(6)
-                })
-                addView(canvasBtn, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                    marginStart = Design.dp(6)
-                })
-                addView(clearBtn, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                    marginStart = Design.dp(6)
-                })
-                pickBtn.setOnClickListener {
-                    val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
-                        type = "image/*"
-                        putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
-                    }
-                    startActivityForResult(intent, REQ_IMAGE)
-                }
-                // 手动裁剪（2026-08-18 加）：裁剪第一张已选图片，结果替换原图
-                cropBtn.setOnClickListener {
-                    val img = selectedImages.firstOrNull()
-                    if (img == null) {
-                        imageStatus.setTextColor(Design.ERROR)
-                        imageStatus.text = "请先选择图片再裁剪"
-                    } else {
-                        ImageCropDialog.show(this@MainActivity, img) { cropped ->
-                            selectedImages[0] = cropped
-                            autoRefreshImagePreview()
-                            imageStatus.setTextColor(Design.TEXT)
-                            imageStatus.text = "已裁剪第 1 张图片"
-                        }
-                    }
-                }
-                // #5d 统一画布：涂鸦/排版合流为一个入口
-                canvasBtn.setOnClickListener { showLayoutDialog() }
-                clearBtn.setOnClickListener {
-                    selectedImages.clear()
-                    imagePreview.setImageDrawable(null)
-                    imageStatus.text = "已清除图片"
-                }
-            }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                topMargin = Design.dp(10)
+            val topPrint = Design.primaryButton("🖨 打印")
+            addView(topPrint, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                marginStart = Design.dp(8)
+                gravity = Gravity.END
             })
-
-            // ── 常用项（不折叠）：一键增强 / 抖动效果 / 打印浓度 ──
-            enhanceCheck = Design.check("✨ 一键增强（去背景/阴影/手写，拍试卷推荐）")
-            enhanceCheck.setOnCheckedChangeListener { _, _ -> autoRefreshImagePreview() }
-            addView(enhanceCheck, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                topMargin = Design.dp(4)
-            })
-            addView(Design.label("抖动效果"))
-            modeGroup = Design.segmentGroup(
-                listOf(
-                    "清晰" to DitherMode.NONE,
-                    "细腻" to DitherMode.FLOYD_STEINBERG,
-                    "高对比" to DitherMode.ATKINSON,
-                ),
-                defaultIndex = 0,
-            ) { autoRefreshImagePreview() }
-            addView(modeGroup)
-            // 旋转（2026-08-14 加）：仅旋转，自动适应 384 宽
-            addView(Design.label("旋转"))
-            rotationGroup = Design.segmentGroup(
-                listOf("0°" to 0, "90°" to 90, "180°" to 180, "270°" to 270),
-                defaultIndex = 0,
-            ) { autoRefreshImagePreview() }
-            addView(rotationGroup)
-            // 打印浓度：全局（Settings.thickness），图片页就近可调（与「我的」页同步）
-            addView(Design.label("打印浓度（深浅）"))
-            val thicknessGroup = Design.segmentGroup(
-                listOf("淡" to 0, "中" to 1, "浓" to 2),
-                defaultIndex = Settings.thickness,
-            ) { i -> Settings.thickness = i }
-            addView(thicknessGroup)
-
-            // ── 高级设置折叠（默认收起；线稿模式勾选时自动展开）──
-            advancedContainer = LinearLayout(this@MainActivity).apply {
-                orientation = LinearLayout.VERTICAL
-                visibility = View.GONE
-            }
-            val advancedBtn = Design.ghostButton("⚙️ 高级设置 ▸")
-            addView(advancedBtn, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                topMargin = Design.dp(6)
-            })
-            advancedBtn.setOnClickListener {
-                val show = advancedContainer.visibility != View.VISIBLE
-                advancedContainer.visibility = if (show) View.VISIBLE else View.GONE
-                advancedBtn.text = if (show) "⚙️ 高级设置 ▾" else "⚙️ 高级设置 ▸"
-            }
-            addView(advancedContainer)
-
-            // 排列方式（双列省纸）
-            advancedContainer.addView(Design.label("排列方式"))
-            layoutGroup = Design.segmentGroup(
-                listOf("单列" to 0, "双列(省纸)" to 1),
-                defaultIndex = 1,
-            ) { autoRefreshImagePreview() }
-            advancedContainer.addView(layoutGroup)
-            // 去批改痕迹（红/蓝笔）
-            advancedContainer.addView(Design.label("去批改痕迹"))
-            inkGroup = Design.segmentGroup(
-                InkRemoveMode.entries.map { it.label to it },
-                defaultIndex = 0,
-            ) { autoRefreshImagePreview() }
-            advancedContainer.addView(inkGroup)
-            trimCheck = Design.check("✂️ 自动裁白边（去掉照片四周多余留白）")
-            trimCheck.setOnCheckedChangeListener { _, _ -> autoRefreshImagePreview() }
-            advancedContainer.addView(trimCheck, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                topMargin = Design.dp(4)
-            })
-            // 黑白深浅（阈值，2026-08-11 加）：黑白化阶段调"哪些像素算黑"，
-            // 与打印浓度（"黑得多黑"）独立叠加调节。仅"清晰"模式生效。
-            advancedContainer.addView(Design.row {
-                addView(Design.label("黑白深浅（越大越黑）"))
-                thresholdValue = Design.label("${Settings.threshold}")
-                addView(thresholdValue, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                    gravity = Gravity.END
-                })
-            })
-            thresholdBar = SeekBar(this@MainActivity).apply {
-                max = 255
-                progress = Settings.threshold
-                setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                    override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
-                        thresholdValue.text = "$progress"
-                    }
-                    override fun onStartTrackingTouch(sb: SeekBar?) {}
-                    override fun onStopTrackingTouch(sb: SeekBar) {
-                        Settings.threshold = sb.progress
-                        autoRefreshImagePreview()
-                    }
-                })
-            }
-            advancedContainer.addView(thresholdBar, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                topMargin = Design.dp(2)
-            })
-            // 增强算法/强度（2026-08-16 加，仅一键增强时生效）
-            advancedContainer.addView(Design.label("增强算法（一键增强时生效）"))
-            enhanceAlgoGroup = Design.segmentGroup(
-                EnhanceAlgorithm.entries.map { it.label to it },
-                defaultIndex = 0,
-            ) { autoRefreshImagePreview() }
-            advancedContainer.addView(enhanceAlgoGroup)
-            advancedContainer.addView(Design.label("增强强度"))
-            enhanceStrengthGroup = Design.segmentGroup(
-                listOf("弱" to 0, "标准" to 1, "强" to 2),
-                defaultIndex = 1,
-            ) { autoRefreshImagePreview() }
-            advancedContainer.addView(enhanceStrengthGroup)
-            // 缩放（2026-08-14 加）：50%~200%，>100% 中心放大细节、<100% 白底居中留白
-            advancedContainer.addView(Design.row {
-                addView(Design.label("缩放（50%~200%）"))
-                scaleValue = Design.label("100%")
-                addView(scaleValue, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                    gravity = Gravity.END
-                })
-            })
-            scaleBar = SeekBar(this@MainActivity).apply {
-                max = 150
-                progress = 50
-                setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                    override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
-                        scaleValue.text = "${progress + 50}%"
-                    }
-                    override fun onStartTrackingTouch(sb: SeekBar?) {}
-                    override fun onStopTrackingTouch(sb: SeekBar) {
-                        autoRefreshImagePreview()
-                    }
-                })
-            }
-            advancedContainer.addView(scaleBar, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                topMargin = Design.dp(2)
-            })
-            // 线稿模式（xyprt 移植 2026-08-11）：独立管线，不经过灰度/对比度；
-            // 勾选时置灰冲突选项（抖动/消除笔/裁边/增强/阈值）并自动展开高级区
-            outlineCheck = Design.check("✏️ 线稿模式（只打线条）")
-            outlineCheck.setOnCheckedChangeListener { _, checked ->
-                val disabled = listOf(modeGroup, inkGroup, trimCheck, enhanceCheck, thresholdBar, enhanceAlgoGroup, enhanceStrengthGroup)
-                disabled.forEach { it.isEnabled = !checked }
-                outlineOptions.visibility = if (checked) View.VISIBLE else View.GONE
-                if (checked) {
-                    advancedContainer.visibility = View.VISIBLE
-                    advancedBtn.text = "⚙️ 高级设置 ▾"
-                }
-                autoRefreshImagePreview()
-            }
-            advancedContainer.addView(outlineCheck, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                topMargin = Design.dp(4)
-            })
-            outlineOptions = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL; visibility = View.GONE }
-            outlineOptions.addView(Design.label("线稿风格"))
-            outlineMethodGroup = Design.segmentGroup(
-                OutlineMethod.entries.map { it.label to it },
-                defaultIndex = OutlineMethod.entries.indexOf(Settings.outlineMethod),
-            ) { autoRefreshImagePreview() }
-            outlineOptions.addView(outlineMethodGroup)
-            outlineOptions.addView(Design.row {
-                addView(Design.label("细节（越大线条越多）"))
-                outlineSensitivityValue = Design.label("${Settings.outlineSensitivity}")
-                addView(outlineSensitivityValue, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                    gravity = Gravity.END
-                })
-            })
-            outlineSensitivityBar = SeekBar(this@MainActivity).apply {
-                max = 100
-                progress = Settings.outlineSensitivity
-                setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                    override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
-                        outlineSensitivityValue.text = "$progress"
-                    }
-                    override fun onStartTrackingTouch(sb: SeekBar?) {}
-                    override fun onStopTrackingTouch(sb: SeekBar) {
-                        Settings.outlineSensitivity = sb.progress
-                        autoRefreshImagePreview()
-                    }
-                })
-            }
-            outlineOptions.addView(outlineSensitivityBar, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                topMargin = Design.dp(2)
-            })
-            outlineOptions.addView(Design.label("线宽"))
-            outlineThicknessGroup = Design.segmentGroup(
-                listOf("细" to 1, "中" to 2, "粗" to 3),
-                defaultIndex = (Settings.outlineThickness - 1).coerceIn(0, 2),
-            ) { autoRefreshImagePreview() }
-            outlineOptions.addView(outlineThicknessGroup)
-            outlineSmoothCheck = Design.check("平滑（去毛刺/小噪点）")
-            outlineSmoothCheck.isChecked = Settings.outlineSmooth
-            outlineSmoothCheck.setOnCheckedChangeListener { _, checked ->
-                Settings.outlineSmooth = checked
-                autoRefreshImagePreview()
-            }
-            outlineOptions.addView(outlineSmoothCheck, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                topMargin = Design.dp(4)
-            })
-            outlineInvertCheck = Design.check("反白（黑底白线）")
-            outlineInvertCheck.isChecked = Settings.outlineInvert
-            outlineInvertCheck.setOnCheckedChangeListener { _, checked ->
-                Settings.outlineInvert = checked
-                autoRefreshImagePreview()
-            }
-            outlineOptions.addView(outlineInvertCheck, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                topMargin = Design.dp(4)
-            })
-            advancedContainer.addView(outlineOptions)
+            topPrint.setOnClickListener { doPrintImage() }
+        }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+            bottomMargin = Design.dp(4)
         })
 
-        col.addView(Design.card {
-            addView(Design.sectionTitle("打印预览"))
+        // ── 主体：大图实时预览（始终显示最终打印效果）──
+        root.addView(Design.card {
             imagePreview = ImageView(this@MainActivity).apply {
                 adjustViewBounds = true
                 scaleType = ImageView.ScaleType.FIT_CENTER
+                minimumHeight = Design.dp(200)
             }
-            addView(imagePreview, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                topMargin = Design.dp(8)
+            addView(imagePreview, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f).apply {
+                topMargin = Design.dp(4)
             })
-            addView(Design.caption("先预览再打印，防废纸"))
-            val previewBtn = Design.outlineButton("👁 预览打印效果")
-            addView(previewBtn, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                topMargin = Design.dp(8)
+            imageStatus = Design.caption("请选择图片")
+            addView(imageStatus, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = Design.dp(4)
             })
-            previewBtn.setOnClickListener { renderImagePreview() }
-        })
-
-        val printBtn = Design.primaryButton("🖨 打印图片")
-        col.addView(printBtn, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+        }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f).apply {
             topMargin = Design.dp(4)
         })
-        printBtn.setOnClickListener { doPrintImage() }
 
-        imageStatus = Design.caption("")
-        col.addView(imageStatus)
+        // ── 缩略图条：多图选择 / 添加 / 删除 ──
+        val thumbScroll = HorizontalScrollView(this@MainActivity).apply {
+            isFillViewport = true
+            isHorizontalScrollBarEnabled = false
+        }
+        thumbContainer = LinearLayout(this@MainActivity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(Design.dp(2), Design.dp(4), Design.dp(2), Design.dp(4))
+        }
+        thumbScroll.addView(thumbContainer, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        root.addView(thumbScroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+
+        // ── 底部控制 Tab：常用 / 效果 / 排版 / 更多 ──
+        imageTabs = RadioGroup(this@MainActivity).apply {
+            orientation = RadioGroup.HORIZONTAL
+            setPadding(Design.dp(4), Design.dp(2), Design.dp(4), Design.dp(2))
+            background = Design.rounded(Design.SURFACE_CONTAINER, Design.RADIUS_SM)
+        }
+        fun tab(label: String): RadioButton = RadioButton(this@MainActivity).apply {
+            text = label
+            textSize = 13f
+            gravity = Gravity.CENTER
+            isAllCaps = false
+            minHeight = Design.dp(36)
+            setButtonDrawable(android.R.color.transparent)
+            id = View.generateViewId()
+            background = android.graphics.drawable.StateListDrawable().apply {
+                addState(intArrayOf(android.R.attr.state_checked), Design.rounded(Design.PRIMARY_CONTAINER, Design.RADIUS_SM))
+                addState(intArrayOf(android.R.attr.state_pressed), Design.rounded(Design.PRIMARY_CONTAINER, Design.RADIUS_SM))
+                addState(intArrayOf(), Design.rounded(Design.SURFACE_CONTAINER, Design.RADIUS_SM))
+            }
+            setTextColor(Design.ON_SURFACE_VARIANT)
+        }
+        val tabCommon = tab("常用")
+        val tabEffect = tab("效果")
+        val tabLayout = tab("排版")
+        val tabMore = tab("更多")
+        listOf(tabCommon, tabEffect, tabLayout, tabMore).forEach {
+            imageTabs.addView(it, RadioGroup.LayoutParams(0, RadioGroup.LayoutParams.WRAP_CONTENT, 1f))
+        }
+        imageTabs.setOnCheckedChangeListener { _, checkedId ->
+            val idx = listOf(tabCommon, tabEffect, tabLayout, tabMore).indexOfFirst { it.id == checkedId }.coerceAtLeast(0)
+            switchImagePanel(idx)
+            listOf(tabCommon, tabEffect, tabLayout, tabMore).forEach {
+                it.setTextColor(if (it.id == checkedId) Design.PRIMARY else Design.ON_SURFACE_VARIANT)
+            }
+        }
+        root.addView(imageTabs, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+            topMargin = Design.dp(2)
+        })
+
+        // ── 分组面板容器 ──
+        val panelHost = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL }
+        imagePanelCommon = buildImagePanelCommon()
+        imagePanelEffect = buildImagePanelEffect()
+        imagePanelLayout = buildImagePanelLayout()
+        imagePanelMore = buildImagePanelMore()
+        panelHost.addView(imagePanelCommon)
+        panelHost.addView(imagePanelEffect)
+        panelHost.addView(imagePanelLayout)
+        panelHost.addView(imagePanelMore)
+        root.addView(panelHost, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+
+        // 默认只显示「常用」面板，其余面板收起
+        switchImagePanel(0)
+        tabCommon.isChecked = true
+
+        refreshImageThumbnails()
         restoreImagePrefs()   // #5b：恢复上次图片页参数
-        return col
+        return root
     }
 
+    /** 图片工作台：底部面板切换 */
+    private fun switchImagePanel(index: Int) {
+        imagePanelCommon.visibility = if (index == 0) View.VISIBLE else View.GONE
+        imagePanelEffect.visibility = if (index == 1) View.VISIBLE else View.GONE
+        imagePanelLayout.visibility = if (index == 2) View.VISIBLE else View.GONE
+        imagePanelMore.visibility = if (index == 3) View.VISIBLE else View.GONE
+    }
+
+    /** 常用面板：选图/裁剪/画布/清除 + 智能优化 + 旋转 + 浓度 */
+    private fun buildImagePanelCommon(): LinearLayout {
+        val panel = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        panel.addView(Design.row {
+            val pickBtn = Design.outlineButton("🖼 选图")
+            val cropBtn = Design.outlineButton("✂ 裁剪")
+            val canvasBtn = Design.outlineButton("🖌 画布")
+            val clearBtn = Design.ghostButton("清除")
+            addView(pickBtn, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            addView(cropBtn, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = Design.dp(6) })
+            addView(canvasBtn, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = Design.dp(6) })
+            addView(clearBtn, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = Design.dp(6) })
+            pickBtn.setOnClickListener {
+                val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
+                    type = "image/*"
+                    putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+                }
+                startActivityForResult(intent, REQ_IMAGE)
+            }
+            cropBtn.setOnClickListener {
+                val img = selectedImages.getOrNull(selectedImageIndex)
+                if (img == null) {
+                    imageStatus.setTextColor(Design.ERROR)
+                    imageStatus.text = "请先选择图片再裁剪"
+                } else {
+                    ImageCropDialog.show(this@MainActivity, img) { cropped ->
+                        selectedImages[selectedImageIndex] = cropped
+                        refreshImageThumbnails()
+                        autoRefreshImagePreview()
+                        imageStatus.setTextColor(Design.TEXT)
+                        imageStatus.text = "已裁剪第 ${selectedImageIndex + 1} 张图片"
+                    }
+                }
+            }
+            canvasBtn.setOnClickListener { showLayoutDialog() }
+            clearBtn.setOnClickListener {
+                selectedImages.clear()
+                selectedImageIndex = 0
+                imagePreview.setImageDrawable(null)
+                refreshImageThumbnails()
+                imageStatus.text = "已清除图片"
+            }
+        }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+            topMargin = Design.dp(4)
+        })
+
+        enhanceCheck = Design.check("✨ 一键增强（去背景/阴影/手写，拍试卷推荐）")
+        enhanceCheck.setOnCheckedChangeListener { _, _ -> autoRefreshImagePreview() }
+        panel.addView(enhanceCheck)
+
+        panel.addView(Design.label("旋转"))
+        rotationGroup = Design.segmentGroup(
+            listOf("0°" to 0, "90°" to 90, "180°" to 180, "270°" to 270),
+            defaultIndex = 0,
+        ) { autoRefreshImagePreview() }
+        panel.addView(rotationGroup)
+
+        panel.addView(Design.label("打印浓度（深浅）"))
+        val thicknessGroup = Design.segmentGroup(
+            listOf("淡" to 0, "中" to 1, "浓" to 2),
+            defaultIndex = Settings.thickness,
+        ) { i -> Settings.thickness = i }
+        panel.addView(thicknessGroup)
+        return panel
+    }
+
+    /** 效果面板：打印质感 / 去笔迹 / 自动裁边 / 黑白深浅 / 增强算法 / 增强强度 */
+    private fun buildImagePanelEffect(): LinearLayout {
+        val panel = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        panel.addView(Design.label("打印质感"))
+        modeGroup = Design.segmentGroup(
+            listOf("清晰" to DitherMode.NONE, "细腻" to DitherMode.FLOYD_STEINBERG, "高对比" to DitherMode.ATKINSON),
+            defaultIndex = 0,
+        ) { autoRefreshImagePreview() }
+        panel.addView(modeGroup)
+
+        panel.addView(Design.label("去批改痕迹"))
+        inkGroup = Design.segmentGroup(
+            InkRemoveMode.entries.map { it.label to it },
+            defaultIndex = 0,
+        ) { autoRefreshImagePreview() }
+        panel.addView(inkGroup)
+
+        trimCheck = Design.check("✂️ 自动裁白边（去掉照片四周多余留白）")
+        trimCheck.setOnCheckedChangeListener { _, _ -> autoRefreshImagePreview() }
+        panel.addView(trimCheck)
+
+        panel.addView(Design.row {
+            addView(Design.label("黑白深浅（越大越黑）"))
+            thresholdValue = Design.label("${Settings.threshold}")
+            addView(thresholdValue, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { gravity = Gravity.END })
+        })
+        thresholdBar = SeekBar(this@MainActivity).apply {
+            max = 255
+            progress = Settings.threshold
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
+                    thresholdValue.text = "$progress"
+                }
+                override fun onStartTrackingTouch(sb: SeekBar?) {}
+                override fun onStopTrackingTouch(sb: SeekBar) {
+                    Settings.threshold = sb.progress
+                    autoRefreshImagePreview()
+                }
+            })
+        }
+        panel.addView(thresholdBar)
+
+        panel.addView(Design.label("增强算法（一键增强时生效）"))
+        enhanceAlgoGroup = Design.segmentGroup(
+            EnhanceAlgorithm.entries.map { it.label to it },
+            defaultIndex = 0,
+        ) { autoRefreshImagePreview() }
+        panel.addView(enhanceAlgoGroup)
+        panel.addView(Design.label("增强强度"))
+        enhanceStrengthGroup = Design.segmentGroup(
+            listOf("弱" to 0, "标准" to 1, "强" to 2),
+            defaultIndex = 1,
+        ) { autoRefreshImagePreview() }
+        panel.addView(enhanceStrengthGroup)
+        return panel
+    }
+
+    /** 排版面板：排列方式 + 缩放 */
+    private fun buildImagePanelLayout(): LinearLayout {
+        val panel = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        panel.addView(Design.label("排列方式"))
+        layoutGroup = Design.segmentGroup(
+            listOf("单列" to 0, "双列(省纸)" to 1),
+            defaultIndex = 1,
+        ) { autoRefreshImagePreview() }
+        panel.addView(layoutGroup)
+
+        panel.addView(Design.row {
+            addView(Design.label("缩放（50%~200%）"))
+            scaleValue = Design.label("100%")
+            addView(scaleValue, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { gravity = Gravity.END })
+        })
+        scaleBar = SeekBar(this@MainActivity).apply {
+            max = 150
+            progress = 50
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
+                    scaleValue.text = "${progress + 50}%"
+                }
+                override fun onStartTrackingTouch(sb: SeekBar?) {}
+                override fun onStopTrackingTouch(sb: SeekBar) {
+                    autoRefreshImagePreview()
+                }
+            })
+        }
+        panel.addView(scaleBar)
+        return panel
+    }
+
+    /** 更多面板：线稿模式 + 线稿子选项 + 画布/模板入口说明 */
+    private fun buildImagePanelMore(): LinearLayout {
+        val panel = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        outlineCheck = Design.check("✏️ 线稿模式（只打线条）")
+        outlineCheck.setOnCheckedChangeListener { _, checked ->
+            val disabled = listOf(modeGroup, inkGroup, trimCheck, enhanceCheck, thresholdBar, enhanceAlgoGroup, enhanceStrengthGroup)
+            disabled.forEach { it.isEnabled = !checked }
+            outlineOptions.visibility = if (checked) View.VISIBLE else View.GONE
+            if (checked && ::imageTabs.isInitialized && imageTabs.childCount > 3) {
+                val moreTab = imageTabs.getChildAt(3)
+                imageTabs.check(moreTab.id)
+                switchImagePanel(3)
+            }
+            autoRefreshImagePreview()
+        }
+        panel.addView(outlineCheck)
+        outlineOptions = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL; visibility = View.GONE }
+        outlineOptions.addView(Design.label("线稿风格"))
+        outlineMethodGroup = Design.segmentGroup(
+            OutlineMethod.entries.map { it.label to it },
+            defaultIndex = OutlineMethod.entries.indexOf(Settings.outlineMethod),
+        ) { autoRefreshImagePreview() }
+        outlineOptions.addView(outlineMethodGroup)
+        outlineOptions.addView(Design.row {
+            addView(Design.label("细节（越大线条越多）"))
+            outlineSensitivityValue = Design.label("${Settings.outlineSensitivity}")
+            addView(outlineSensitivityValue, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { gravity = Gravity.END })
+        })
+        outlineSensitivityBar = SeekBar(this@MainActivity).apply {
+            max = 100
+            progress = Settings.outlineSensitivity
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
+                    outlineSensitivityValue.text = "$progress"
+                }
+                override fun onStartTrackingTouch(sb: SeekBar?) {}
+                override fun onStopTrackingTouch(sb: SeekBar) {
+                    Settings.outlineSensitivity = sb.progress
+                    autoRefreshImagePreview()
+                }
+            })
+        }
+        outlineOptions.addView(outlineSensitivityBar)
+        outlineOptions.addView(Design.label("线宽"))
+        outlineThicknessGroup = Design.segmentGroup(
+            listOf("细" to 1, "中" to 2, "粗" to 3),
+            defaultIndex = (Settings.outlineThickness - 1).coerceIn(0, 2),
+        ) { autoRefreshImagePreview() }
+        outlineOptions.addView(outlineThicknessGroup)
+        outlineSmoothCheck = Design.check("平滑（去毛刺/小噪点）")
+        outlineSmoothCheck.isChecked = Settings.outlineSmooth
+        outlineSmoothCheck.setOnCheckedChangeListener { _, checked ->
+            Settings.outlineSmooth = checked
+            autoRefreshImagePreview()
+        }
+        outlineOptions.addView(outlineSmoothCheck)
+        outlineInvertCheck = Design.check("反白（黑底白线）")
+        outlineInvertCheck.isChecked = Settings.outlineInvert
+        outlineInvertCheck.setOnCheckedChangeListener { _, checked ->
+            Settings.outlineInvert = checked
+            autoRefreshImagePreview()
+        }
+        outlineOptions.addView(outlineInvertCheck)
+        panel.addView(outlineOptions)
+        panel.addView(Design.caption("更多能力：画布、模板、错题卡仍在原入口，后续统一收进工作台"))
+        return panel
+    }
+
+    /** 刷新缩略图条：多图选择/删除/添加 */
+    private fun refreshImageThumbnails() {
+        if (!::thumbContainer.isInitialized) return
+        thumbContainer.removeAllViews()
+        if (selectedImages.isEmpty()) {
+            imageStatus?.text = "请选择图片"
+        }
+        selectedImages.forEachIndexed { index, bmp ->
+            val thumb = ImageView(this).apply {
+                setImageBitmap(bmp)
+                scaleType = ImageView.ScaleType.CENTER_CROP
+                isClickable = true
+                setOnClickListener {
+                    selectedImageIndex = index
+                    refreshImageThumbnails()
+                    autoRefreshImagePreview()
+                }
+                setOnLongClickListener {
+                    selectedImages.removeAt(index)
+                    if (selectedImageIndex >= selectedImages.size) selectedImageIndex = selectedImages.size - 1
+                    if (selectedImageIndex < 0) selectedImageIndex = 0
+                    refreshImageThumbnails()
+                    autoRefreshImagePreview()
+                    true
+                }
+                background = Design.rounded(
+                    if (index == selectedImageIndex) Design.PRIMARY else Design.OUTLINE,
+                    Design.RADIUS_SM
+                )
+            }
+            val size = Design.dp(56)
+            thumbContainer.addView(thumb, LinearLayout.LayoutParams(size, size).apply {
+                marginEnd = Design.dp(6)
+            })
+        }
+        // 添加按钮
+        val add = Design.outlineButton("＋").apply {
+            text = "＋"
+            minHeight = Design.dp(56)
+            minWidth = Design.dp(56)
+            setOnClickListener {
+                val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
+                    type = "image/*"
+                    putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+                }
+                startActivityForResult(intent, REQ_IMAGE)
+            }
+        }
+        thumbContainer.addView(add, LinearLayout.LayoutParams(Design.dp(56), Design.dp(56)))
+    }
     // ── 错题卡内容块 ──
     // ── 其它内容块（常用模板 + 错题卡，2026-08-12 合并，替换原 错题卡/课程表/单词表/每日计划/口算题 分散入口）──
     private fun buildOtherContent(): LinearLayout {
@@ -1998,10 +2108,10 @@ class MainActivity : Activity() {
                     RasterEncoder.encode(bmp, DitherMode.NONE, 190, contrast = 10) to 2
                 }
                 lower.endsWith(".docx") -> {
-                    val paras = DocxTextExtractor.extract(this@MainActivity, uri) { n ->
-                        onProgress("已提取 $n 段…")
-                    }
-                    RasterEncoder.encodeText(paras.joinToString("\n")) to 0
+                    onProgress("正在解析 Word 版式…")
+                    val layout = DocxLayoutExtractor.extract(this@MainActivity, uri)
+                    val bmp = DocLayoutRenderer.render(layout)
+                    RasterEncoder.encode(bmp, DitherMode.NONE, RasterEncoder.THRESHOLD_TEXT) to 2
                 }
                 lower.endsWith(".xlsx") -> {
                     val lines = XlsxTextExtractor.extract(this@MainActivity, uri) { n ->
