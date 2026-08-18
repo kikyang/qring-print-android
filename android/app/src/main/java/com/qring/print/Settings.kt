@@ -21,6 +21,7 @@ object Settings {
     private const val KEY_OUTLINE_SMOOTH = "outline_smooth"
     private const val KEY_OUTLINE_INVERT = "outline_invert"
     private const val KEY_BARCODE_TYPE = "barcode_type"
+    private const val KEY_LAST_SEEN_VERSION = "last_seen_version"
 
     /** X1 浓度合法范围 0~2（实测 3/4 报 ER） */
     const val THICKNESS_MIN = 0
@@ -109,6 +110,16 @@ object Settings {
 
     /** 读取某内容类型的编辑页状态快照；无则 null（首启/旧版本） */
     fun loadContentPref(type: String): String? = p().getString("content_pref_$type", null)
+
+    // ── 更新说明（2026-08-17 加）：上次运行版本 ──
+
+    /**
+     * 上次运行版本号。OTA 升级装好新包后 App 数据保留，下次启动据此判断是否弹「更新说明」。
+     * "" = 从未记录（全新安装），首启直接写入当前版本、不弹窗。
+     */
+    var lastSeenVersion: String
+        get() = p().getString(KEY_LAST_SEEN_VERSION, null) ?: ""
+        set(v) = p().edit().putString(KEY_LAST_SEEN_VERSION, v).apply()
 }
 
 /** 连接通道选择 */

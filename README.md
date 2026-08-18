@@ -20,12 +20,14 @@
 
 ## 下载 APK
 
-最新版见 [Releases](https://github.com/kikyang/qring-print-android/releases)（v0.7.0，0.90MB，需 Android 13+）。
+最新版见 [Releases](https://github.com/kikyang/qring-print-android/releases)（v0.7.1，0.90MB，需 Android 13+）。
 应用内「我的 → 关于 → 检查更新」可直接升级到新版本（检查走 jsDelivr，国内网络可用；
 发版后 2-3 小时内新版可能尚未被收录，属正常延迟）。
 
 ## 更新日志
 
+- **v0.7.1（2026-08-18）**：**OTA 升级后新增更新说明弹窗**——升级后首次启动会展示本次更新说明，
+  支持跨版本收集更新日志（跳版本也能看到）；137 例测试全过，R8 release APK 0.90MB
 - **v0.7.0（2026-08-16）**：**Markdown 打印 + 照片旋转/缩放 + 高分辨率增强**——
   文档 Tab 新增 Markdown 打印（自写 parser/renderer，零依赖）；图片页新增旋转 0/90/180/270
   与缩放 50%~200%；「一键增强」升级为高分辨率光照补偿后再缩放二值化（小字不糊），

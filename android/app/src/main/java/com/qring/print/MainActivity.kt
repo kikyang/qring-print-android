@@ -215,6 +215,8 @@ class MainActivity : Activity() {
 
         setContentView(root)
         switchPage(PAGE_HOME)
+        // OTA 更新装好后，下次启动弹「更新说明」（2026-08-17 加）
+        maybeShowUpdateNotes()
         // 历史「再编辑」（#5a）：HistoryActivity 带 EXTRA_EDIT_JOB 启动时恢复编辑页
         handleEditIntent(intent)
         // 自检触发移到 onResume（App 运行时 am start 走 onNewIntent，onCreate 拿不到 extra）
@@ -3459,6 +3461,32 @@ class MainActivity : Activity() {
                     printTemplate { MathWorksheet.build(op, count) }
                 }
             }
+    }
+
+    /**
+     * OTA 升级完成后弹「更新说明」（2026-08-17 加）：
+     * 装好新包后下次启动，比对上次运行版本（Settings.lastSeenVersion），
+     * 有新版本则弹出内置更新说明；首装/未升级只记录版本、不弹窗。
+     */
+    private fun maybeShowUpdateNotes() {
+        // adb 预览自检路径（开发者自查）不弹窗
+        if (intent.getBooleanExtra("run_preview_check", false)) return
+        // 注意：runCatching 成功但 versionName 为 null 时 getOrDefault 会返回 null（Robolectric
+        // 测试环境实测），必须再补 `?: ""`，否则赋给非空参数直接 NPE
+        val current = runCatching { packageManager.getPackageInfo(packageName, 0).versionName }
+            .getOrDefault("") ?: ""
+        val lastSeen = Settings.lastSeenVersion
+        if (lastSeen.isEmpty() || !ReleaseNotes.isNewer(current, lastSeen)) {
+            Settings.lastSeenVersion = current   // 首装 / 未升级：仅记录
+            return
+        }
+        Settings.lastSeenVersion = current       // 先记录再弹：防弹窗异常/被杀后反复弹
+        val notes = ReleaseNotes.notesSince(lastSeen)
+        AlertDialog.Builder(this)
+            .setTitle("更新说明 v$current")
+            .setMessage(notes ?: "已更新到 v$current")
+            .setPositiveButton("知道了", null)
+            .show()
     }
 
     /** OTA 检查更新（藏在我的页 → 关于）：GitHub Releases 版本比对 + 下载安装 */

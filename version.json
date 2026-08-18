@@ -1,1 +1,1 @@
-{"version":"0.7.0","notes":"v0.7.0：Markdown 打印 + 照片旋转/缩放 + 高分辨率增强（Sauvola/Wolf/Bradley 三算法可选）"}
+{"version":"0.7.1","notes":"v0.7.1：新增 OTA 升级后更新说明弹窗，显示当前版本与跳版本更新日志"}
