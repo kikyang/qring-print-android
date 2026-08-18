@@ -105,13 +105,19 @@ object Design {
     val TEXT_SUB: Int get() = ON_SURFACE_VARIANT
     val DIVIDER: Int get() = OUTLINE_VARIANT
     val PRIMARY_LIGHT: Int get() = PRIMARY_CONTAINER
-    const val RADIUS_SM = 8f   // 微信小圆角（卡片/按钮/宫格）
+    /** 小圆角：随主题变化——微信 8px / xyprt 6px / 喵喵机胶囊 18px */
+    val RADIUS_SM: Float
+        get() = when (theme) {
+            UiTheme.XYPRT -> 6f
+            UiTheme.MIAOMIAO -> 18f
+            else -> 8f
+        }
 
-    // ── Shape 刻度 ──
-    private const val SHAPE_SMALL = 8f     // 卡片/按钮/输入框
+    // ── Shape 刻度（随主题）──
+    private val SHAPE_SMALL: Float get() = RADIUS_SM
     private const val SHAPE_MEDIUM = 12f   // 大容器
     private const val SHAPE_LARGE = 28f    // 对话框
-    private const val SHAPE_FULL = 999f    // 兼容旧胶囊调用（segmentGroup 等仍可胶囊）
+    private const val SHAPE_FULL = 999f    // 胶囊/兼容旧调用
 
     // ── 圆角背景工具 ──
     fun rounded(color: Int, radius: Float = SHAPE_SMALL, strokeColor: Int? = null, strokeW: Int = 1): GradientDrawable =
@@ -186,7 +192,13 @@ object Design {
     }
 
     // ── 按钮（微信风：8px 圆角方按钮，非胶囊）──
-    /** 主按钮：微信绿底白字 + 8px 圆角 */
+    private fun buttonRadius(): Float = when (theme) {
+        UiTheme.MIAOMIAO -> SHAPE_FULL
+        UiTheme.XYPRT -> 6f
+        else -> SHAPE_SMALL
+    }
+
+    /** 主按钮：主题化圆角（微信方 / xyprt 小圆角 / 喵喵机胶囊） */
     fun primaryButton(text: String): Button = Button(Utils.appContext()).apply {
         this.text = text
         setTextColor(ON_PRIMARY)
@@ -195,13 +207,14 @@ object Design {
         isAllCaps = false
         minHeight = dp(44)
         setPadding(dp(20), 0, dp(20), 0)
+        val r = buttonRadius()
         background = pressable(
-            rounded(PRIMARY, SHAPE_SMALL),
-            rounded(PRIMARY_DEEP, SHAPE_SMALL),
+            rounded(PRIMARY, r),
+            rounded(PRIMARY_DEEP, r),
         )
     }
 
-    /** 次按钮：白底 + 灰描边 + 绿字 + 8px 圆角 */
+    /** 次按钮：白底 + 描边 + 主题色字 */
     fun outlineButton(text: String): Button = Button(Utils.appContext()).apply {
         this.text = text
         setTextColor(PRIMARY)
@@ -210,13 +223,14 @@ object Design {
         isAllCaps = false
         minHeight = dp(40)
         setPadding(dp(16), 0, dp(16), 0)
+        val r = buttonRadius()
         background = pressable(
-            rounded(SURFACE_CONTAINER_LOW, SHAPE_SMALL, OUTLINE, dp(1)),
-            rounded(PRIMARY_CONTAINER, SHAPE_SMALL, PRIMARY, dp(1)),
+            rounded(SURFACE_CONTAINER_LOW, r, OUTLINE, dp(1)),
+            rounded(PRIMARY_CONTAINER, r, PRIMARY, dp(1)),
         )
     }
 
-    /** 轻按钮：浅灰底 + 深灰字 + 8px 圆角（微信小程序常用） */
+    /** 轻按钮：浅底 + 深字，主题化圆角 */
     fun ghostButton(text: String): Button = Button(Utils.appContext()).apply {
         this.text = text
         setTextColor(ON_SECONDARY_CONTAINER)
@@ -224,9 +238,10 @@ object Design {
         isAllCaps = false
         minHeight = dp(40)
         setPadding(dp(16), 0, dp(16), 0)
+        val r = buttonRadius()
         background = pressable(
-            rounded(SECONDARY_CONTAINER, SHAPE_SMALL),
-            rounded(if (isDark) 0xFF333333.toInt() else 0xFFE0E0E0.toInt(), SHAPE_SMALL),
+            rounded(SECONDARY_CONTAINER, r),
+            rounded(if (isDark) 0xFF333333.toInt() else 0xFFE0E0E0.toInt(), r),
         )
     }
 
@@ -235,7 +250,8 @@ object Design {
         RadioGroup(Utils.appContext()).apply {
             orientation = RadioGroup.HORIZONTAL
             setPadding(dp(2), dp(2), dp(2), dp(2))
-            background = rounded(SURFACE_CONTAINER_LOW, SHAPE_SMALL, OUTLINE, dp(1))
+            val r = buttonRadius()
+            background = rounded(SURFACE_CONTAINER_LOW, r, OUTLINE, dp(1))
             items.forEachIndexed { i, (label, value) ->
                 val rb = RadioButton(Utils.appContext()).apply {
                     text = label
@@ -245,9 +261,9 @@ object Design {
                     minHeight = dp(34)
                     // checked 态持续高亮（浅绿底绿字），未选白底灰字
                     background = StateListDrawable().apply {
-                        addState(intArrayOf(android.R.attr.state_checked), rounded(PRIMARY_CONTAINER, SHAPE_SMALL))
-                        addState(intArrayOf(android.R.attr.state_pressed), rounded(PRIMARY_CONTAINER, SHAPE_SMALL))
-                        addState(intArrayOf(), rounded(SURFACE_CONTAINER_LOW, SHAPE_SMALL))
+                        addState(intArrayOf(android.R.attr.state_checked), rounded(PRIMARY_CONTAINER, r))
+                        addState(intArrayOf(android.R.attr.state_pressed), rounded(PRIMARY_CONTAINER, r))
+                        addState(intArrayOf(), rounded(SURFACE_CONTAINER_LOW, r))
                     }
                     setPadding(dp(12), 0, dp(12), 0)
                     setButtonDrawable(android.R.color.transparent)
