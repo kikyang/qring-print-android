@@ -22,6 +22,7 @@ object Settings {
     private const val KEY_OUTLINE_INVERT = "outline_invert"
     private const val KEY_BARCODE_TYPE = "barcode_type"
     private const val KEY_LAST_SEEN_VERSION = "last_seen_version"
+    private const val KEY_UI_THEME = "ui_theme"
 
     /** X1 浓度合法范围 0~2（实测 3/4 报 ER） */
     const val THICKNESS_MIN = 0
@@ -110,6 +111,13 @@ object Settings {
 
     /** 读取某内容类型的编辑页状态快照；无则 null（首启/旧版本） */
     fun loadContentPref(type: String): String? = p().getString("content_pref_$type", null)
+
+    // ── UI 主题（2026-08-18 加）：微信风 / xyprt 简洁风 / 仿喵喵机蓝白风 ──
+
+    var uiTheme: UiTheme
+        get() = runCatching { UiTheme.valueOf(p().getString(KEY_UI_THEME, null) ?: "WECHAT") }
+            .getOrDefault(UiTheme.WECHAT)
+        set(v) = p().edit().putString(KEY_UI_THEME, v.name).apply()
 
     // ── 更新说明（2026-08-17 加）：上次运行版本 ──
 

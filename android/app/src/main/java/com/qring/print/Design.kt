@@ -13,6 +13,13 @@ import android.widget.RadioButton
 import android.widget.RadioGroup
 import android.widget.TextView
 
+/** 界面主题（2026-08-18 加）：微信风 / xyprt 简洁风 / 仿喵喵机蓝白风 */
+enum class UiTheme(val label: String) {
+    WECHAT("微信风"),
+    XYPRT("简洁风"),
+    MIAOMIAO("蓝白风"),
+}
+
 /**
  * 设计系统 —— 微信小程序风格（2026-08-11 用户选定，替换原 M3 学习绿）。
  *
@@ -31,24 +38,65 @@ object Design {
     @Volatile
     var isDark: Boolean = false
 
-    // ── 微信小程序风 Color Scheme ──
-    // Light: 微信灰底白卡 + 微信绿 | Dark: 微信深色风
-    val PRIMARY: Int get() = 0xFF07C160.toInt()          // 微信绿（深浅通用）
+    /** 界面主题（2026-08-18 加）：设置页可切换 */
+    @Volatile
+    var theme: UiTheme = UiTheme.WECHAT
+
+    // ── 主题 Color Scheme（2026-08-18 加：微信风 / xyprt 简洁风 / 仿喵喵机蓝白风）──
+    private data class Palette(
+        val primary: Int, val primaryDeep: Int, val primaryContainer: Int,
+        val onPrimaryContainer: Int, val secondaryContainer: Int, val onSecondaryContainer: Int,
+        val surface: Int, val surfaceContainerLow: Int, val surfaceContainer: Int,
+        val onSurface: Int, val onSurfaceVariant: Int, val outline: Int, val outlineVariant: Int,
+    )
+
+    private val pal: Palette
+        get() = when (theme) {
+            UiTheme.XYPRT -> if (isDark) Palette(
+                0xFF7A9BFF.toInt(), 0xFF6A8BFF.toInt(), 0xFF25345C.toInt(), 0xFFAFC4FF.toInt(),
+                0xFF262626.toInt(), 0xFFE5E5E5.toInt(), 0xFF111114.toInt(), 0xFF1C1C22.toInt(),
+                0xFF26262E.toInt(), 0xFFE5E5E5.toInt(), 0xFF9A9A9A.toInt(), 0xFF3A3A44.toInt(), 0xFF2A2A32.toInt(),
+            ) else Palette(
+                0xFF3B6EF6.toInt(), 0xFF2F5FE0.toInt(), 0xFFE8EFFF.toInt(), 0xFF3B6EF6.toInt(),
+                0xFFF2F3F5.toInt(), 0xFF191919.toInt(), 0xFFF5F6FA.toInt(), 0xFFFFFFFF.toInt(),
+                0xFFF0F1F5.toInt(), 0xFF1A1A1A.toInt(), 0xFF888888.toInt(), 0xFFD8DCE5.toInt(), 0xFFEAECF0.toInt(),
+            )
+            UiTheme.MIAOMIAO -> if (isDark) Palette(
+                0xFF6FA8E8.toInt(), 0xFF5F9ADF.toInt(), 0xFF233A55.toInt(), 0xFFA8CCF5.toInt(),
+                0xFF262626.toInt(), 0xFFE5E5E5.toInt(), 0xFF10151C.toInt(), 0xFF1A212B.toInt(),
+                0xFF242D39.toInt(), 0xFFE5E5E5.toInt(), 0xFF9A9A9A.toInt(), 0xFF3A4655.toInt(), 0xFF2A3440.toInt(),
+            ) else Palette(
+                0xFF4A90D9.toInt(), 0xFF3D7FC7.toInt(), 0xFFE3F0FC.toInt(), 0xFF4A90D9.toInt(),
+                0xFFF2F4F7.toInt(), 0xFF191919.toInt(), 0xFFF0F4FF.toInt(), 0xFFFFFFFF.toInt(),
+                0xFFE8EEF7.toInt(), 0xFF1A1A1A.toInt(), 0xFF888888.toInt(), 0xFFD5DEE9.toInt(), 0xFFE8EEF5.toInt(),
+            )
+            else -> if (isDark) Palette(
+                0xFF07C160.toInt(), 0xFF06AD56.toInt(), 0xFF1F3D2C.toInt(), 0xFF8BE8B4.toInt(),
+                0xFF262626.toInt(), 0xFFE5E5E5.toInt(), 0xFF111111.toInt(), 0xFF1E1E1E.toInt(),
+                0xFF2A2A2A.toInt(), 0xFFE5E5E5.toInt(), 0xFF9A9A9A.toInt(), 0xFF3A3A3A.toInt(), 0xFF2A2A2A.toInt(),
+            ) else Palette(
+                0xFF07C160.toInt(), 0xFF06AD56.toInt(), 0xFFE8F8EE.toInt(), 0xFF07C160.toInt(),
+                0xFFF2F3F5.toInt(), 0xFF191919.toInt(), 0xFFF7F7F7.toInt(), 0xFFFFFFFF.toInt(),
+                0xFFF2F3F5.toInt(), 0xFF191919.toInt(), 0xFF888888.toInt(), 0xFFDADADA.toInt(), 0xFFEBEDF0.toInt(),
+            )
+        }
+
+    val PRIMARY: Int get() = pal.primary
     val ON_PRIMARY: Int get() = 0xFFFFFFFF.toInt()
-    val PRIMARY_DEEP: Int get() = 0xFF06AD56.toInt()     // 按下态
-    val PRIMARY_CONTAINER: Int get() = if (isDark) 0xFF1F3D2C.toInt() else 0xFFE8F8EE.toInt()  // 浅绿选中底
-    val ON_PRIMARY_CONTAINER: Int get() = if (isDark) 0xFF8BE8B4.toInt() else 0xFF07C160.toInt()
-    val SECONDARY_CONTAINER: Int get() = if (isDark) 0xFF262626.toInt() else 0xFFF2F3F5.toInt() // 浅灰底
-    val ON_SECONDARY_CONTAINER: Int get() = if (isDark) 0xFFE5E5E5.toInt() else 0xFF191919.toInt()
-    val SURFACE: Int get() = if (isDark) 0xFF111111.toInt() else 0xFFF7F7F7.toInt()             // 页面灰底
-    val SURFACE_CONTAINER_LOW: Int get() = if (isDark) 0xFF1E1E1E.toInt() else 0xFFFFFFFF.toInt() // 白卡
-    val SURFACE_CONTAINER: Int get() = if (isDark) 0xFF2A2A2A.toInt() else 0xFFF2F3F5.toInt()   // 分段/输入底
-    val ON_SURFACE: Int get() = if (isDark) 0xFFE5E5E5.toInt() else 0xFF191919.toInt()          // 主文字
-    val ON_SURFACE_VARIANT: Int get() = if (isDark) 0xFF9A9A9A.toInt() else 0xFF888888.toInt()  // 次文字
-    val OUTLINE: Int get() = if (isDark) 0xFF3A3A3A.toInt() else 0xFFDADADA.toInt()             // 描边
-    val OUTLINE_VARIANT: Int get() = if (isDark) 0xFF2A2A2A.toInt() else 0xFFEBEDF0.toInt()     // 分隔线
+    val PRIMARY_DEEP: Int get() = pal.primaryDeep
+    val PRIMARY_CONTAINER: Int get() = pal.primaryContainer
+    val ON_PRIMARY_CONTAINER: Int get() = pal.onPrimaryContainer
+    val SECONDARY_CONTAINER: Int get() = pal.secondaryContainer
+    val ON_SECONDARY_CONTAINER: Int get() = pal.onSecondaryContainer
+    val SURFACE: Int get() = pal.surface
+    val SURFACE_CONTAINER_LOW: Int get() = pal.surfaceContainerLow
+    val SURFACE_CONTAINER: Int get() = pal.surfaceContainer
+    val ON_SURFACE: Int get() = pal.onSurface
+    val ON_SURFACE_VARIANT: Int get() = pal.onSurfaceVariant
+    val OUTLINE: Int get() = pal.outline
+    val OUTLINE_VARIANT: Int get() = pal.outlineVariant
     val ERROR: Int get() = 0xFFFA5151.toInt()
-    val OK: Int get() = 0xFF07C160.toInt()
+    val OK: Int get() = pal.primary
 
     // ── 兼容别名（旧调用点）──
     val BG: Int get() = SURFACE

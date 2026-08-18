@@ -153,6 +153,30 @@ object PrintJobRunner {
     }
 
     /**
+     * 多份打印（2026-08-18 加）：逐份调用 [printRaster]，每份都等 ACK 完成后再开下一份。
+     * 返回第一份失败时的错误；成功份数通过 message 说明。
+     */
+    suspend fun printRasterCopies(
+        io: PrinterIo,
+        raster: RasterData,
+        thickness: Int?,
+        mode: Int,
+        halveRows: Boolean,
+        feedBefore: Int?,
+        feedAfter: Int?,
+        copies: Int,
+    ): PrintResult {
+        val n = copies.coerceAtLeast(1)
+        for (i in 1..n) {
+            val r = printRaster(io, raster, thickness, mode, halveRows, feedBefore, feedAfter)
+            if (!r.ok) {
+                return if (n > 1) PrintResult(false, "第 $i/$n 份失败：${r.message}") else r
+            }
+        }
+        return PrintResult(true, if (n > 1) "打印完成（$n 份）" else "打印完成")
+    }
+
+    /**
      * 等打印完成 ACK (0xAA)，同时盯 FF xx 故障帧。
      * prev 跨 readAvailable 调用保留（原实现每次查缓冲会漏掉跨包边界的 FF xx 帧）。
      */

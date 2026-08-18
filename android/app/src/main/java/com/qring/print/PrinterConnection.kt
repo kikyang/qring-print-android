@@ -64,6 +64,29 @@ interface PrinterConnection {
         feedAfter: Int? = null,
     ): PrintResult
 
+    /**
+     * 多份打印（2026-08-18 加）：逐份调用 [printRaster]，每份都等 ACK 完成后再开下一份。
+     * 默认实现已满足 BLE/SPP/Fake 三通道；返回第一份失败时的错误。
+     */
+    suspend fun printRasterCopies(
+        raster: RasterData,
+        thickness: Int? = null,
+        mode: Int = 0,
+        halveRows: Boolean = false,
+        feedBefore: Int? = null,
+        feedAfter: Int? = null,
+        copies: Int = 1,
+    ): PrintResult {
+        val n = copies.coerceAtLeast(1)
+        for (i in 1..n) {
+            val r = printRaster(raster, thickness, mode, halveRows, feedBefore, feedAfter)
+            if (!r.ok) {
+                return if (n > 1) PrintResult(false, "第 $i/$n 份失败：${r.message}") else r
+            }
+        }
+        return PrintResult(true, if (n > 1) "打印完成（$n 份）" else "打印完成")
+    }
+
     /** 查一轮状态 + 电量 */
     suspend fun refreshAll()
 

@@ -196,6 +196,8 @@ class MainActivity : Activity() {
         Design.isDark = (resources.configuration.uiMode and
             android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
             android.content.res.Configuration.UI_MODE_NIGHT_YES
+        // UI 主题（2026-08-18 加）：设置页可切换
+        Design.theme = Settings.uiTheme
 
         // ── 根布局：内容区 + 底部导航 ──
         val root = LinearLayout(this).apply {
@@ -783,9 +785,13 @@ class MainActivity : Activity() {
             addView(Design.caption("多选图自动拼接省纸 · 画布可涂鸦/加文字排版"))
             addView(Design.row {
                 val pickBtn = Design.outlineButton("🖼 选图")
+                val cropBtn = Design.outlineButton("✂ 裁剪")
                 val canvasBtn = Design.outlineButton("🖌 画布")
                 val clearBtn = Design.ghostButton("清除")
                 addView(pickBtn, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                addView(cropBtn, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    marginStart = Design.dp(6)
+                })
                 addView(canvasBtn, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
                     marginStart = Design.dp(6)
                 })
@@ -798,6 +804,21 @@ class MainActivity : Activity() {
                         putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
                     }
                     startActivityForResult(intent, REQ_IMAGE)
+                }
+                // 手动裁剪（2026-08-18 加）：裁剪第一张已选图片，结果替换原图
+                cropBtn.setOnClickListener {
+                    val img = selectedImages.firstOrNull()
+                    if (img == null) {
+                        imageStatus.setTextColor(Design.ERROR)
+                        imageStatus.text = "请先选择图片再裁剪"
+                    } else {
+                        ImageCropDialog.show(this@MainActivity, img) { cropped ->
+                            selectedImages[0] = cropped
+                            autoRefreshImagePreview()
+                            imageStatus.setTextColor(Design.TEXT)
+                            imageStatus.text = "已裁剪第 1 张图片"
+                        }
+                    }
                 }
                 // #5d 统一画布：涂鸦/排版合流为一个入口
                 canvasBtn.setOnClickListener { showLayoutDialog() }
@@ -1705,7 +1726,7 @@ class MainActivity : Activity() {
                 val raster = RasterEncoder.encode(bmp, DitherMode.NONE, RasterEncoder.THRESHOLD_IMAGE)
                 val previewBmp = imagePreviewRaster(raster)
                 val desc = "${raster.widthBytes * 8}×${raster.height} 点，约 ${"%.0f".format(raster.height / 8.0)}mm 高"
-                previewConfirmDialog("确认加入排版画布（$desc）", previewBmp) {
+                previewConfirmDialog("确认加入排版画布（$desc）", previewBmp) { _ ->
                     selectedImages.add(bmp)
                     updateThumbnail()
                     layoutDialog?.dismiss()
@@ -1867,8 +1888,8 @@ class MainActivity : Activity() {
 
         col.addView(Design.card {
             addView(Design.sectionTitle("文档打印"))
-            addView(Design.caption("PDF 逐页图片打印 · Word/Excel/TXT 文本打印（支持老格式 doc/xls）"))
-            val pickBtn = Design.outlineButton("📄 选择文档（PDF / docx / xlsx / doc / xls / txt / md）")
+            addView(Design.caption("PDF 逐页图片打印 · Word/Excel/PPT/TXT 文本打印（支持老格式 doc/xls）"))
+            val pickBtn = Design.outlineButton("📄 选择文档（PDF / docx / xlsx / pptx / doc / xls / txt / md）")
             addView(pickBtn, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
                 topMargin = Design.dp(8)
             })
@@ -1882,6 +1903,7 @@ class MainActivity : Activity() {
                         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         "application/msword",                       // .doc 老格式（解析会提示不支持）
                         "application/vnd.ms-excel",                  // .xls 老格式
+                        "application/vnd.openxmlformats-officedocument.presentationml.presentation", // .pptx
                         "text/plain",                                // .txt
                         "text/markdown", "text/x-markdown",          // .md（2026-08-14 加）
                     ))
@@ -1987,6 +2009,12 @@ class MainActivity : Activity() {
                     }
                     RasterEncoder.encodeText(lines.joinToString("\n")) to 0
                 }
+                lower.endsWith(".pptx") -> {
+                    onProgress("正在提取 PPT 文本…")
+                    val text = PptxTextExtractor.extractToText(this@MainActivity, uri)
+                    if (text.isBlank()) throw IllegalStateException("PPT 没有可打印的文本内容")
+                    RasterEncoder.encodeText(text) to 0
+                }
                 lower.endsWith(".md") || lower.endsWith(".markdown") -> {
                     // Markdown（2026-08-14 加）：自写解析 + 384 宽渲染，走图片通道 m=2
                     val text = readTextLimited(this@MainActivity, uri)
@@ -2072,11 +2100,12 @@ class MainActivity : Activity() {
             return
         }
         val title = currentDocTitle
-        previewConfirmDialog(title, imagePreviewRaster(raster)) {
+        previewConfirmDialog(title, imagePreviewRaster(raster)) { copies ->
             doPrintConfirmed(
                 raster, mode = currentDocMode, halveRows = currentDocMode == 2,
                 okMessage = "文档打印完成", statusView = docStatus,
                 historyType = "文档", historyTitle = title,
+                copies = copies,
             )
         }
     }
@@ -2102,10 +2131,10 @@ class MainActivity : Activity() {
                 val raster = RasterEncoder.encode(bmp, DitherMode.NONE, RasterEncoder.THRESHOLD_IMAGE)
                 val previewBmp = imagePreviewRaster(raster)
                 barcodePreview.setImageBitmap(previewBmp)
-                previewConfirmDialog("确认打印条码", previewBmp) {
+                previewConfirmDialog("确认打印条码", previewBmp) { copies ->
                     doPrintConfirmed(raster, mode = 2, halveRows = true, okMessage = "条码打印完成",
                         statusView = barcodeStatus, historyType = "条码", historyTitle = barcodeInput.text.toString().take(20),
-                        paramsJson = barcodeParamsJson())
+                        paramsJson = barcodeParamsJson(), copies = copies)
                 }
             } catch (e: Exception) {
                 barcodeStatus.setTextColor(Design.ERROR)
@@ -2209,6 +2238,22 @@ class MainActivity : Activity() {
                     if (!hasFocus) Settings.feedAfter = feedAfterInput.text.toString().toIntOrNull() ?: 100
                 }
             })
+        })
+
+        // UI 主题（2026-08-18 加）：微信风 / xyprt 简洁风 / 仿喵喵机蓝白风
+        page.addView(Design.card {
+            addView(Design.sectionTitle("界面主题"))
+            addView(Design.caption("选择你喜欢的界面风格，立即生效"))
+            val themeGroup = Design.segmentGroup(
+                UiTheme.entries.map { it.label to it },
+                defaultIndex = UiTheme.entries.indexOf(Settings.uiTheme),
+            ) { i ->
+                val t = UiTheme.entries[i]
+                Settings.uiTheme = t
+                Design.theme = t
+                recreate()
+            }
+            addView(themeGroup)
         })
 
         page.addView(Design.card {
@@ -2844,7 +2889,8 @@ class MainActivity : Activity() {
     // ── 打印确认 ──
 
     /** 打印前确认对话框：显示实际打印效果，确认才打印，取消零耗纸 */
-    private fun previewConfirmDialog(title: String, previewBmp: Bitmap, onConfirm: () -> Unit) {
+    private fun previewConfirmDialog(title: String, previewBmp: Bitmap, onConfirm: (copies: Int) -> Unit) {
+        var copies = 1
         val img = ImageView(this).apply {
             setImageBitmap(previewBmp)
             scaleType = ImageView.ScaleType.FIT_CENTER
@@ -2852,17 +2898,43 @@ class MainActivity : Activity() {
             maxHeight = Design.dp(440)
             setPadding(Design.dp(12), Design.dp(8), Design.dp(12), Design.dp(8))
         }
+        val copiesText = Design.label("份数 1")
+        val copiesRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(Design.dp(12), Design.dp(4), Design.dp(12), Design.dp(4))
+        }
+        val minus = Design.ghostButton("－")
+        val plus = Design.ghostButton("＋")
+        minus.setOnClickListener {
+            copies = (copies - 1).coerceAtLeast(1)
+            copiesText.text = "份数 $copies"
+        }
+        plus.setOnClickListener {
+            copies = (copies + 1).coerceAtMost(10)
+            copiesText.text = "份数 $copies"
+        }
+        copiesRow.addView(minus, LinearLayout.LayoutParams(Design.dp(48), LinearLayout.LayoutParams.WRAP_CONTENT))
+        copiesRow.addView(copiesText, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+            gravity = Gravity.CENTER
+        })
+        copiesRow.addView(plus, LinearLayout.LayoutParams(Design.dp(48), LinearLayout.LayoutParams.WRAP_CONTENT))
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(img)
+            addView(copiesRow)
+        }
         val dialog = AlertDialog.Builder(this)
             .setTitle(title)
             .setMessage("这是实际打印效果，满意再打")
-            .setView(img)
+            .setView(container)
             .setPositiveButton("🖨 确认打印", null)
             .setNegativeButton("取消", null)
             .create()
         dialog.show()
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
             dialog.dismiss()
-            onConfirm()
+            onConfirm(copies)
         }
     }
 
@@ -2881,6 +2953,7 @@ class MainActivity : Activity() {
         historyType: String,
         historyTitle: String,
         paramsJson: String? = null,
+        copies: Int = 1,
     ) {
         scope.launch {
             try {
@@ -2890,24 +2963,27 @@ class MainActivity : Activity() {
                     statusView.setTextColor(Design.ERROR)
                     return@launch
                 }
-                val r = printer.printRaster(
+                val n = copies.coerceAtLeast(1)
+                val r = printer.printRasterCopies(
                     raster,
                     thickness = Settings.thickness,
                     mode = mode,
                     halveRows = halveRows,
                     feedBefore = Settings.feedBefore,
                     feedAfter = Settings.feedAfter,
+                    copies = n,
                 )
                 if (r.ok) {
                     statusView.setTextColor(Design.OK)
-                    statusView.text = "✅ $okMessage"
+                    statusView.text = "✅ $okMessage" + if (n > 1) "（$n 份）" else ""
                     // 打印成功 → 记历史（无损光栅 + 缩略图）
                     runCatching {
                         val preview = RasterEncoder.rasterToPreviewBitmap(
                             if (halveRows) RasterEncoder.halveRows(raster) else raster,
                             verticalScale = if (halveRows) 2 else 1,
                         )
-                        HistoryStore.add(historyType, historyTitle, raster, preview, paramsJson)
+                        val title = if (n > 1) "$historyTitle ×$n" else historyTitle
+                        HistoryStore.add(historyType, title, raster, preview, paramsJson)
                     }
                 } else {
                     statusView.setTextColor(Design.ERROR)
@@ -3184,10 +3260,10 @@ class MainActivity : Activity() {
                 val bmp = RasterEncoder.rasterToPreviewBitmap(raster)
                 textPreview.setImageBitmap(bmp)
                 val desc = "${raster.widthBytes * 8}×${raster.height} 点，约 ${"%.0f".format(raster.height / 8.0)}mm 高"
-                previewConfirmDialog("确认打印文字（$desc）", bmp) {
+                previewConfirmDialog("确认打印文字（$desc）", bmp) { copies ->
                     doPrintConfirmed(raster, mode = 0, halveRows = false, okMessage = "文字打印完成",
                         statusView = textStatus, historyType = "文字", historyTitle = text.take(20),
-                        paramsJson = textParamsJson())
+                        paramsJson = textParamsJson(), copies = copies)
                 }
             } catch (e: Exception) {
                 PrintLog.event("文字打印异常: ${e.javaClass.simpleName}: ${e.message}")
@@ -3210,10 +3286,10 @@ class MainActivity : Activity() {
                 val bmp = imagePreviewRaster(raster)
                 imagePreview.setImageBitmap(bmp)
                 val desc = "${raster.widthBytes * 8}×${raster.height} 点，约 ${"%.0f".format(raster.height / 8.0)}mm 高"
-                previewConfirmDialog("确认打印图片（$desc）", bmp) {
+                previewConfirmDialog("确认打印图片（$desc）", bmp) { copies ->
                     doPrintConfirmed(raster, mode = 2, halveRows = true, okMessage = "图片打印完成",
                         statusView = imageStatus, historyType = "图片", historyTitle = "图片 ${selectedImages.size} 张",
-                        paramsJson = imageParamsJson())
+                        paramsJson = imageParamsJson(), copies = copies)
                 }
             } catch (e: Exception) {
                 PrintLog.event("图片打印异常: ${e.javaClass.simpleName}: ${e.message}")
@@ -3256,10 +3332,10 @@ class MainActivity : Activity() {
                 val title = text.lineSequence().firstOrNull { it.isNotBlank() }
                     ?.trim()?.take(20) ?: "Markdown"
                 val desc = "${raster.widthBytes * 8}×${raster.height} 点，约 ${"%.0f".format(raster.height / 8.0)}mm 高"
-                previewConfirmDialog("确认打印 Markdown（$desc）", bmp) {
+                previewConfirmDialog("确认打印 Markdown（$desc）", bmp) { copies ->
                     doPrintConfirmed(raster, mode = 2, halveRows = true, okMessage = "Markdown 打印完成",
                         statusView = docStatus, historyType = "Markdown", historyTitle = title,
-                        paramsJson = markdownParamsJson())
+                        paramsJson = markdownParamsJson(), copies = copies)
                 }
             } catch (e: Exception) {
                 PrintLog.event("Markdown 打印异常: ${e.javaClass.simpleName}: ${e.message}")
@@ -3344,10 +3420,10 @@ class MainActivity : Activity() {
                 }
                 val bmp = imagePreviewRaster(raster)
                 cardPreview.setImageBitmap(bmp)
-                previewConfirmDialog("确认打印重做卷（${problems.size} 题）", bmp) {
+                previewConfirmDialog("确认打印重做卷（${problems.size} 题）", bmp) { copies ->
                     doPrintConfirmed(raster, mode = 2, halveRows = true, okMessage = "重做卷打印完成",
                         statusView = cardStatus, historyType = "错题卡", historyTitle = "重做卷 ${problems.size} 题",
-                        paramsJson = reworkParamsJson())
+                        paramsJson = reworkParamsJson(), copies = copies)
                 }
             } catch (e: Exception) {
                 PrintLog.event("重做卷异常: ${e.javaClass.simpleName}: ${e.message}")
@@ -3372,10 +3448,10 @@ class MainActivity : Activity() {
                 val raster = cardRaster(reason, knowledge)
                 val bmp = imagePreviewRaster(raster)
                 cardPreview.setImageBitmap(bmp)
-                previewConfirmDialog("确认打印错题卡", bmp) {
+                previewConfirmDialog("确认打印错题卡", bmp) { copies ->
                     doPrintConfirmed(raster, mode = 2, halveRows = true, okMessage = "错题卡打印完成",
                         statusView = cardStatus, historyType = "错题卡", historyTitle = reason.ifEmpty { knowledge },
-                        paramsJson = cardParamsJson())
+                        paramsJson = cardParamsJson(), copies = copies)
                 }
             } catch (e: Exception) {
                 PrintLog.event("错题卡异常: ${e.javaClass.simpleName}: ${e.message}")
@@ -3393,9 +3469,10 @@ class MainActivity : Activity() {
                 val page = gen()
                 val raster = RasterEncoder.encode(page, DitherMode.NONE, RasterEncoder.THRESHOLD_TEXT)
                 val bmp = imagePreviewRaster(raster)
-                previewConfirmDialog("确认打印模板", bmp) {
+                previewConfirmDialog("确认打印模板", bmp) { copies ->
                     doPrintConfirmed(raster, mode = 2, halveRows = true, okMessage = "模板打印完成",
-                        statusView = imageStatus, historyType = "模板", historyTitle = "模板")
+                        statusView = imageStatus, historyType = "模板", historyTitle = "模板",
+                        copies = copies)
                 }
             } catch (e: Exception) {
                 PrintLog.event("模板异常: ${e.javaClass.simpleName}: ${e.message}")
@@ -3560,9 +3637,10 @@ class MainActivity : Activity() {
                 val page = SelfTest.build()
                 val raster = RasterEncoder.encode(page, DitherMode.FLOYD_STEINBERG)
                 val bmp = imagePreviewRaster(raster)
-                previewConfirmDialog("确认打印自检页", bmp) {
+                previewConfirmDialog("确认打印自检页", bmp) { copies ->
                     doPrintConfirmed(raster, mode = 2, halveRows = true, okMessage = "自检页打印完成",
-                        statusView = cardStatus, historyType = "自检页", historyTitle = "打印测试页")
+                        statusView = cardStatus, historyType = "自检页", historyTitle = "打印测试页",
+                        copies = copies)
                 }
             } catch (e: Exception) {
                 PrintLog.event("自检页异常: ${e.javaClass.simpleName}: ${e.message}")
