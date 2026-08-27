@@ -137,6 +137,16 @@ object Design {
             addState(intArrayOf(), up)
         }
 
+    /**
+     * 胶囊按钮文字垂直居中修复（2026-08-27 用户反馈：胶囊按钮内容错位）。
+     * 根因：TextView 默认 includeFontPadding=true，按字体度量（升部/降部不对称）画文字，
+     * 字形中心比几何中心偏下，胶囊大圆角下尤其刺眼。关掉后按字形框居中，配 CENTER 重力真正居中。
+     */
+    private fun android.widget.TextView.pillCentered() {
+        includeFontPadding = false
+        gravity = Gravity.CENTER
+    }
+
     // ── 页面容器 ──
     fun page(): LinearLayout = LinearLayout(Utils.appContext()).apply {
         orientation = LinearLayout.VERTICAL
@@ -188,6 +198,8 @@ object Design {
         typeface = Typeface.DEFAULT_BOLD
         if (theme == UiTheme.MIAOMIAO) {
             setPadding(dp(12), dp(6), dp(12), dp(6))
+            // 胶囊标签垂直居中（只关字体内边距，保持左对齐）
+            includeFontPadding = false
             background = rounded(PRIMARY_CONTAINER, SHAPE_MEDIUM)
         }
     }
@@ -222,6 +234,7 @@ object Design {
         isAllCaps = false
         minHeight = dp(44)
         setPadding(dp(20), 0, dp(20), 0)
+        pillCentered()
         val r = buttonRadius()
         background = pressable(
             rounded(PRIMARY, r),
@@ -238,6 +251,7 @@ object Design {
         isAllCaps = false
         minHeight = dp(40)
         setPadding(dp(16), 0, dp(16), 0)
+        pillCentered()
         val r = buttonRadius()
         background = pressable(
             rounded(SURFACE_CONTAINER_LOW, r, OUTLINE, dp(1)),
@@ -253,6 +267,7 @@ object Design {
         isAllCaps = false
         minHeight = dp(40)
         setPadding(dp(16), 0, dp(16), 0)
+        pillCentered()
         val r = buttonRadius()
         background = pressable(
             rounded(SECONDARY_CONTAINER, r),
@@ -271,9 +286,9 @@ object Design {
                 val rb = RadioButton(Utils.appContext()).apply {
                     text = label
                     textSize = 13f
-                    gravity = Gravity.CENTER
                     isAllCaps = false
                     minHeight = dp(34)
+                    pillCentered()
                     // checked 态持续高亮（浅绿底绿字），未选白底灰字
                     background = StateListDrawable().apply {
                         addState(intArrayOf(android.R.attr.state_checked), rounded(PRIMARY_CONTAINER, r))
