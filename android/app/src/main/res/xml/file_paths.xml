@@ -2,4 +2,6 @@
 <!-- OTA 下载的 APK 位于 cacheDir/updates/，安装时经 FileProvider 暴露 -->
 <paths>
     <cache-path name="updates" path="updates/" />
+    <!-- 拍照临时照片（2026-08-27 加，ACTION_IMAGE_CAPTURE EXTRA_OUTPUT 目标） -->
+    <cache-path name="camera" path="camera/" />
 </paths>

@@ -18,6 +18,7 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.net.Uri
 import android.os.Build
+import android.provider.MediaStore
 import android.text.Editable
 import android.os.Bundle
 import org.json.JSONObject
@@ -38,6 +39,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -159,6 +161,21 @@ class MainActivity : Activity() {
     private lateinit var enhanceCheckCard: CheckBox
     /** 错题卡版式：0=标准错题卡 1=复习友好版（2026-08-13 加） */
     private lateinit var cardStyleGroup: RadioGroup
+    /** #8 错题卡弹窗引用（重开前先关旧的） */
+    private var cardDialog: AlertDialog? = null
+
+    // ── 变量数据批量打印（2026-08-27 加）──
+    /** 批量对话框内控件引用（文件选择走 onActivityResult，需跨回调访问） */
+    private var batchDialog: AlertDialog? = null
+    private var batchFileStatus: TextView? = null
+    private var batchTemplateInput: EditText? = null
+    private var batchSerialCheck: android.widget.CheckBox? = null
+    private var batchPreview: ImageView? = null
+    /** 已解析表格（CSV / Excel 统一存列名+记录） */
+    private var batchColumns: List<String> = emptyList()
+    private var batchRows: List<Map<String, String>> = emptyList()
+    /** 其它页（模板 + 批量）状态栏：模板动作反馈挂这里而非 imageStatus（其它页看不到图片状态） */
+    private lateinit var otherStatus: TextView
 
     // ── 页面结构 ──
     private lateinit var contentArea: LinearLayout
@@ -167,8 +184,7 @@ class MainActivity : Activity() {
     private lateinit var minePage: View
     private lateinit var textContent: LinearLayout
     private lateinit var imageContent: LinearLayout
-    private lateinit var cardContent: LinearLayout
-    /** 其它页（模板 + 错题卡，2026-08-12 合并） */
+    /** 其它页（常用模板 + 我的模板；错题卡 2026-08-27 并入模板宫格弹窗） */
     private lateinit var otherContent: LinearLayout
     /** #5e 我的模板：宫格容器（进其它页/存删模板时 refreshUserTemplateGrid 重建） */
     private lateinit var userTemplateCard: LinearLayout
@@ -180,6 +196,8 @@ class MainActivity : Activity() {
     private lateinit var tabMine: LinearLayout
 
     private val selectedImages = mutableListOf<Bitmap>()
+    /** 拍照落盘文件（ACTION_IMAGE_CAPTURE EXTRA_OUTPUT 目标，2026-08-27） */
+    private var lastCameraFile: java.io.File? = null
     /** 扫描发现的未配对 Qring 设备（引导配对用） */
     private val discoveredDevices = mutableSetOf<BluetoothDevice>()
 
@@ -188,6 +206,8 @@ class MainActivity : Activity() {
     private val REQ_DOC = 1003
     private val REQ_CANVAS_IMAGE = 1004
     private val REQ_MD = 1005
+    private val REQ_BATCH_FILE = 1006
+    private val REQ_CAMERA = 1007
 
     companion object {
         const val PAGE_HOME = 0
@@ -230,6 +250,8 @@ class MainActivity : Activity() {
         maybeShowUpdateNotes()
         // 历史「再编辑」（#5a）：HistoryActivity 带 EXTRA_EDIT_JOB 启动时恢复编辑页
         handleEditIntent(intent)
+        // #14 系统分享入口：相册/文件「分享图片」冷启动进入图片页
+        handleShareIntent(intent)
         // 自检触发移到 onResume（App 运行时 am start 走 onNewIntent，onCreate 拿不到 extra）
     }
 
@@ -332,6 +354,9 @@ class MainActivity : Activity() {
                 save("contrast_pdf.png", imagePreviewRaster(RasterEncoder.encode(testPhoto, DitherMode.NONE, 190, contrast = 10)))
                 // 口算题（2026-08-11 加）：混合类型 12 题渲染验证
                 save("math_mix.png", imagePreviewRaster(RasterEncoder.encode(MathWorksheet.build(MathWorksheet.Op.MIX, 12), DitherMode.NONE, RasterEncoder.THRESHOLD_TEXT)))
+                // 函数图像（2026-08-27 加）：抛物线/正弦渲染验证（曲线走 drawLine，JVM 测试只能断言边框，真机预览验曲线）
+                save("graph_parabola.png", imagePreviewRaster(RasterEncoder.encode(FunctionGraph.render("x^2-3", -10.0, 10.0), DitherMode.NONE, RasterEncoder.THRESHOLD_TEXT)))
+                save("graph_sine.png", imagePreviewRaster(RasterEncoder.encode(FunctionGraph.render("sin(x)", -10.0, 10.0), DitherMode.NONE, RasterEncoder.THRESHOLD_TEXT)))
                 // 文档（2026-08-11 加）：合成 PDF/docx/xlsx 走完整提取/渲染链路
                 runCatching {
                     val pdfFile = java.io.File(filesDir, "test_selftest.pdf")
@@ -422,7 +447,7 @@ class MainActivity : Activity() {
                 snapshot(printPage, "page_print_image_outline.png")
                 outlineCheck.isChecked = false
                 subTabOther.isChecked = true
-                snapshot(printPage, "page_print_card.png")
+                snapshot(printPage, "page_print_other.png")   // 常用模板+我的模板（错题卡并入弹窗后）
                 subTabBarcode.isChecked = true
                 snapshot(printPage, "page_print_barcode.png")
                 subTabText.isChecked = true
@@ -605,12 +630,15 @@ class MainActivity : Activity() {
             isClickable = true
             setOnClickListener { action() }
         }
-        // 白底圆角容器 + 位图图标（60dp，统一风格）
+        // 图标容器：仿喵喵机 = 淡蓝大圆底（恢复初始版彩色圆底），其余主题白底圆角容器
         val iconWrap = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             setPadding(Design.dp(10), Design.dp(10), Design.dp(10), Design.dp(10))
-            background = Design.rounded(0xFFFFFFFF.toInt(), Design.dp(18).toFloat())
+            background = if (Design.theme == UiTheme.MIAOMIAO)
+                Design.rounded(Design.PRIMARY_CONTAINER, Design.dp(32).toFloat())
+            else
+                Design.rounded(0xFFFFFFFF.toInt(), Design.dp(18).toFloat())
         }
         iconWrap.addView(iconView())
         item.addView(iconWrap)
@@ -907,10 +935,12 @@ class MainActivity : Activity() {
             val pickBtn = Design.outlineButton("🖼 选图")
             val cropBtn = Design.outlineButton("✂ 裁剪")
             val canvasBtn = Design.outlineButton("🖌 画布")
+            val cameraBtn = Design.outlineButton("📷 拍照")
             val clearBtn = Design.ghostButton("清除")
             addView(pickBtn, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
             addView(cropBtn, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = Design.dp(6) })
             addView(canvasBtn, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = Design.dp(6) })
+            addView(cameraBtn, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = Design.dp(6) })
             addView(clearBtn, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = Design.dp(6) })
             pickBtn.setOnClickListener {
                 val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
@@ -935,6 +965,7 @@ class MainActivity : Activity() {
                 }
             }
             canvasBtn.setOnClickListener { showLayoutDialog() }
+            cameraBtn.setOnClickListener { launchCameraCapture() }
             clearBtn.setOnClickListener {
                 selectedImages.clear()
                 selectedImageIndex = 0
@@ -1216,9 +1247,13 @@ class MainActivity : Activity() {
         col.addView(userTemplateCard)
         refreshUserTemplateGrid()
 
-        // 错题卡（原独立 Tab，2026-08-12 并入其它页）
-        cardContent = buildCardContent()
-        col.addView(cardContent)
+        // 其它页状态栏（模板/批量打印反馈；2026-08-27 加——此前模板动作挂 imageStatus，
+        // 在其它页看不到，用户以为没反应）
+        otherStatus = Design.caption("")
+        col.addView(otherStatus, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+            topMargin = Design.dp(4)
+        })
         return col
     }
 
@@ -1229,6 +1264,11 @@ class MainActivity : Activity() {
             SystemTemplates.ACTION_WORD -> printTemplate { TemplateLibrary.wordList() }
             SystemTemplates.ACTION_PLAN -> printTemplate { TemplateLibrary.dailyPlan() }
             SystemTemplates.ACTION_MATH -> showMathDialog()
+            SystemTemplates.ACTION_BATCH -> showBatchDialog()
+            SystemTemplates.ACTION_GRAPH -> showFunctionGraphDialog()
+            // #8 错题卡并入模板系统：宫格入口打开错题卡弹窗，版式预选
+            SystemTemplates.ACTION_CARD_STD -> showCardDialog(0)
+            SystemTemplates.ACTION_CARD_REVIEW -> showCardDialog(1)
         }
     }
 
@@ -1295,16 +1335,23 @@ class MainActivity : Activity() {
             .show()
     }
 
-    private fun buildCardContent(): LinearLayout {
-        val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+    /**
+     * #8 错题卡并入模板系统：宫格入口打开的错题卡弹窗。
+     * 版式按入口预选（0=标准卡 1=复习友好版），弹窗内可再切；其余题目图处理参数恢复记忆。
+     * 打印/预览走既有链路（printTemplateCard / renderCardPreview / printReworkSheet），
+     * 状态反馈写在弹窗内 cardStatus，预览确认框叠在弹窗之上。
+     */
+    private fun showCardDialog(mode: Int) {
+        cardDialog?.takeIf { it.isShowing }?.dismiss()
+        val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
 
-        col.addView(Design.card {
+        content.addView(Design.card {
             addView(Design.sectionTitle("错题卡打印"))
             addView(Design.caption("题目图（可选）+ 错因 + 知识点，自动排版"))
             addView(Design.label("版式"))
             cardStyleGroup = Design.segmentGroup(
                 listOf("标准卡" to 0, "复习友好版" to 1),
-                defaultIndex = 0,
+                defaultIndex = mode,
             ) { autoRefreshCardPreview() }
             addView(cardStyleGroup)
             reasonInput = Design.input("错因（如：概念不清）")
@@ -1372,7 +1419,7 @@ class MainActivity : Activity() {
             })
         })
 
-        col.addView(Design.card {
+        content.addView(Design.card {
             addView(Design.sectionTitle("打印预览"))
             cardPreview = ImageView(this@MainActivity).apply {
                 adjustViewBounds = true
@@ -1390,22 +1437,38 @@ class MainActivity : Activity() {
         })
 
         val printBtn = Design.primaryButton("🎴 生成并打印错题卡")
-        col.addView(printBtn, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+        content.addView(printBtn, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
             topMargin = Design.dp(4)
         })
         printBtn.setOnClickListener { printTemplateCard() }
 
         // 重做卷（2026-08-13 加，复习友好版的一部分）：选 N 张题目图 → 题目区前、订正区后的卷子
         val reworkBtn = Design.ghostButton("📜 重做卷（选 N 张题目图 → 题目前/订正后）")
-        col.addView(reworkBtn, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+        content.addView(reworkBtn, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
             topMargin = Design.dp(4)
         })
         reworkBtn.setOnClickListener { printReworkSheet() }
 
         cardStatus = Design.caption("")
-        col.addView(cardStatus)
-        restoreCardPrefs()   // #5b：恢复上次错题卡参数（重做卷共用）
-        return col
+        content.addView(cardStatus)
+
+        // 恢复记忆（题目图处理参数 + 版式）→ 再以宫格入口的版式为准
+        restoreCardPrefs()
+        restoreGroup(cardStyleGroup, mode)
+        if (reasonInput.text.isNotBlank() || knowledgeInput.text.isNotBlank() || selectedImages.isNotEmpty()) {
+            renderCardPreview()
+        }
+
+        val scroll = ScrollView(this)
+        scroll.addView(content)
+        scroll.layoutParams = android.view.ViewGroup.LayoutParams(
+            android.view.ViewGroup.LayoutParams.MATCH_PARENT, Design.dp(520)
+        )
+        cardDialog = AlertDialog.Builder(this)
+            .setTitle("🎴 错题卡")
+            .setView(scroll)
+            .setPositiveButton("关闭", null)
+            .create().apply { show() }
     }
 
     // ── 条码内容块（2026-08-11 加，参考 QrintPrint-Windows）──
@@ -2446,6 +2509,8 @@ class MainActivity : Activity() {
         }
         // 历史「再编辑」（#5a）：MainActivity 已在栈内时走 onNewIntent
         handleEditIntent(intent)
+        // #14 系统分享入口：App 前台运行时分享图片走 onNewIntent
+        handleShareIntent(intent)
     }
 
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
@@ -2484,10 +2549,32 @@ class MainActivity : Activity() {
             }
             data?.data?.let { uris.add(it) }
             if (uris.isEmpty()) return
+            // #13 横版旋转推荐：记录本次选入的位图（宽>高判横版），选完后一键旋转 90°
+            val startIdx = selectedImages.size
+            val added = mutableListOf<Bitmap>()
             for (uri in uris) {
-                loadImage(uri)?.let { selectedImages.add(it) }
+                loadImage(uri)?.let { added.add(it) }
             }
+            selectedImages.addAll(added)
             updateThumbnail()
+            if (added.any { it.width > it.height }) showLandscapeRotationHint(startIdx, added)
+        }
+        // 拍照（2026-08-27）：ACTION_IMAGE_CAPTURE 写盘到 cacheDir/camera/，读入图片页
+        if (requestCode == REQ_CAMERA && resultCode == RESULT_OK) {
+            val file = lastCameraFile ?: return
+            lastCameraFile = null
+            val bmp = BitmapFactory.decodeFile(file.absolutePath)
+            file.delete()
+            if (bmp == null) {
+                imageStatus.setTextColor(Design.ERROR)
+                imageStatus.text = "未获取到照片"
+                return
+            }
+            val startIdx = selectedImages.size
+            val added = mutableListOf(bmp)
+            selectedImages.add(bmp)
+            updateThumbnail()
+            if (bmp.width > bmp.height) showLandscapeRotationHint(startIdx, added)
         }
         // 画布：选一张图作为画布元素（2026-08-12）
         if (requestCode == REQ_CANVAS_IMAGE && resultCode == RESULT_OK) {
@@ -2583,6 +2670,41 @@ class MainActivity : Activity() {
                 docStatus.setTextColor(Design.TEXT_SUB)
             }
         }
+        // 批量打印：选中 CSV / Excel 文件（2026-08-27 加，弹窗内异步解析 + 回填）
+        if (requestCode == REQ_BATCH_FILE && resultCode == RESULT_OK) {
+            val uri = data?.data ?: return
+            batchFileStatus?.setTextColor(Design.TEXT_SUB)
+            batchFileStatus?.text = "⏳ 正在解析文件…"
+            scope.launch {
+                try {
+                    val name = queryDisplayName(uri) ?: "文件"
+                    // 两解析器 Table 类型不同，统一成 列名+记录 的 Pair
+                    val (columns, rows) = if (name.endsWith(".xlsx", ignoreCase = true)) {
+                        val t = XlsxTableExtractor.extract(this@MainActivity, uri)
+                        t.columns to t.rows
+                    } else {
+                        val input = contentResolver.openInputStream(uri)
+                            ?: throw IllegalStateException("无法打开文件")
+                        val t = CsvTableParser.parse(input)
+                        t.columns to t.rows
+                    }
+                    if (rows.isEmpty()) {
+                        batchFileStatus?.setTextColor(Design.ERROR)
+                        batchFileStatus?.text = "❌ $name 没有数据记录"
+                        return@launch
+                    }
+                    batchColumns = columns
+                    batchRows = rows
+                    batchFileStatus?.setTextColor(Design.OK)
+                    batchFileStatus?.text = "✅ $name · ${columns.size} 列 · ${rows.size} 条"
+                    batchDialog?.getButton(AlertDialog.BUTTON_POSITIVE)?.text = "🖨 打印全部 ${rows.size} 条"
+                    refreshBatchPreview()
+                } catch (e: Exception) {
+                    batchFileStatus?.setTextColor(Design.ERROR)
+                    batchFileStatus?.text = "❌ 解析失败：${e.javaClass.simpleName} ${e.message}"
+                }
+            }
+        }
     }
 
     private fun loadImage(uri: Uri): Bitmap? {
@@ -2613,6 +2735,50 @@ class MainActivity : Activity() {
         val composed = RasterEncoder.composeImages(selectedImages, layout)
         imagePreview.setImageBitmap(composed)
         imageStatus.text = "已选 ${selectedImages.size} 张图"
+    }
+
+    /** #13 横版旋转推荐：选入的横版照片（宽>高）提示一键旋转 90°，旋转后替换原图并刷预览 */
+    private fun showLandscapeRotationHint(startIdx: Int, added: MutableList<Bitmap>) {
+        val landscapeCount = added.count { it.width > it.height }
+        AlertDialog.Builder(this)
+            .setTitle("检测到横版照片")
+            .setMessage("本次选入 $landscapeCount 张横版照片（宽>高）。横版图按纵向纸宽打印通常会被压缩，是否一键旋转 90°？")
+            .setPositiveButton("全部旋转 90°") { _, _ ->
+                for (i in added.indices) {
+                    if (added[i].width > added[i].height) {
+                        added[i] = ImageTransform.rotate(added[i], 90)
+                        selectedImages[startIdx + i] = added[i]
+                    }
+                }
+                refreshImageThumbnails()
+                autoRefreshImagePreview()
+            }
+            .setNegativeButton("忽略", null)
+            .show()
+    }
+
+    /** 拍照（2026-08-27）：ACTION_IMAGE_CAPTURE + FileProvider，照片落盘 cacheDir/camera/。
+     *  不声明 CAMERA 权限——拍照由外部相机 App 完成，避免多余运行时权限请求 */
+    private fun launchCameraCapture() {
+        val dir = java.io.File(cacheDir, "camera")
+        if (!dir.exists() && !dir.mkdirs()) {
+            imageStatus.setTextColor(Design.ERROR)
+            imageStatus.text = "无法创建拍照缓存目录"
+            return
+        }
+        val file = java.io.File(dir, "camera_${System.currentTimeMillis()}.jpg")
+        try {
+            val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
+            lastCameraFile = file
+            val intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE).apply {
+                putExtra(MediaStore.EXTRA_OUTPUT, uri)
+                addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+            }
+            startActivityForResult(intent, REQ_CAMERA)
+        } catch (e: Exception) {
+            imageStatus.setTextColor(Design.ERROR)
+            imageStatus.text = "打开相机失败：${e.message}"
+        }
     }
 
     private fun ensurePermission() {
@@ -2999,6 +3165,10 @@ class MainActivity : Activity() {
     // ── 打印确认 ──
 
     /** 打印前确认对话框：显示实际打印效果，确认才打印，取消零耗纸 */
+    /**
+     * #23 统一打印确认条：打印预览下方一排「浓度 / 前走纸 / 后走纸 / 份数」，
+     * 直接写 Settings（thickness/feedBefore/feedAfter），doPrintConfirmed 已从 Settings 读，调用点零改动。
+     */
     private fun previewConfirmDialog(title: String, previewBmp: Bitmap, onConfirm: (copies: Int) -> Unit) {
         var copies = 1
         val img = ImageView(this).apply {
@@ -3008,6 +3178,20 @@ class MainActivity : Activity() {
             maxHeight = Design.dp(440)
             setPadding(Design.dp(12), Design.dp(8), Design.dp(12), Design.dp(8))
         }
+        // 浓度（淡/中/浓 → Settings.thickness，全局生效）
+        val thicknessGroup = Design.segmentGroup(
+            listOf("淡" to 0, "中" to 1, "浓" to 2),
+            defaultIndex = Settings.thickness,
+        ) { Settings.thickness = it }
+        // 走纸（前/后各 无/1段/2段 → Settings.feedBefore/feedAfter；1段=默认进/出纸量）
+        val feedBeforeGroup = Design.segmentGroup(
+            listOf("无" to 0, "1段" to 1, "2段" to 2),
+            defaultIndex = (Settings.feedBefore / 10).coerceIn(0, 2),
+        ) { Settings.feedBefore = it * 10 }
+        val feedAfterGroup = Design.segmentGroup(
+            listOf("无" to 0, "1段" to 1, "2段" to 2),
+            defaultIndex = (Settings.feedAfter / 100).coerceIn(0, 2),
+        ) { Settings.feedAfter = it * 100 }
         val copiesText = Design.label("份数 1")
         val copiesRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -3029,10 +3213,32 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER
         })
         copiesRow.addView(plus, LinearLayout.LayoutParams(Design.dp(48), LinearLayout.LayoutParams.WRAP_CONTENT))
+        // 统一确认条（统一准备卡外观：白底圆角 + 选项行）
+        val bar = Design.card {
+            addView(Design.row {
+                addView(Design.label("打印浓度"), LinearLayout.LayoutParams(Design.dp(60), LinearLayout.LayoutParams.WRAP_CONTENT))
+                addView(thicknessGroup, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            })
+            addView(Design.row {
+                addView(Design.label("前走纸"), LinearLayout.LayoutParams(Design.dp(60), LinearLayout.LayoutParams.WRAP_CONTENT))
+                addView(feedBeforeGroup, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                addView(Design.label("后走纸"), LinearLayout.LayoutParams(Design.dp(60), LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                    marginStart = Design.dp(6)
+                })
+                addView(feedAfterGroup, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            }.also {
+                it.layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                    topMargin = Design.dp(2)
+                }
+            })
+            addView(copiesRow)
+        }
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             addView(img)
-            addView(copiesRow)
+            addView(bar, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = Design.dp(2)
+            })
         }
         val dialog = AlertDialog.Builder(this)
             .setTitle(title)
@@ -3241,7 +3447,8 @@ class MainActivity : Activity() {
                 imageStatus.text = "已恢复图片参数（图片需重新选择）"
             }
             "card" -> {
-                subTabOther.isChecked = true   // 错题卡在「其它」页
+                subTabOther.isChecked = true   // 错题卡并入模板宫格弹窗（#8），先确保弹窗已开
+                if (!::reasonInput.isInitialized) showCardDialog(p.optInt("style", 0))
                 reasonInput.setText(p.optString("reason"))
                 knowledgeInput.setText(p.optString("knowledge"))
                 restoreGroup(cardStyleGroup, p.optInt("style", 0))
@@ -3258,6 +3465,7 @@ class MainActivity : Activity() {
             }
             "rework" -> {
                 subTabOther.isChecked = true
+                if (!::reasonInput.isInitialized) showCardDialog(0)
                 restoreGroup(modeGroupCard, p.optString("mode", DitherMode.FLOYD_STEINBERG.name))
                 restoreGroup(inkGroupCard, p.optString("ink", InkRemoveMode.NONE.name))
                 trimCheckCard.isChecked = p.optBoolean("trim")
@@ -3291,13 +3499,29 @@ class MainActivity : Activity() {
         restoreEdit(job, params)
     }
 
+    /** #14 系统分享入口：ACTION_SEND 图片 → 读入图片页（替换当前选图，方便直接打印） */
+    private fun handleShareIntent(intent: Intent) {
+        if (intent.action != Intent.ACTION_SEND) return
+        val type = intent.type
+        if (type == null || !type.startsWith("image/")) return
+        val uri: Uri = intent.getParcelableExtra(Intent.EXTRA_STREAM) ?: return
+        val bmp = loadImage(uri) ?: return
+        selectedImages.clear()
+        selectedImages.add(bmp)
+        switchPage(PAGE_PRINT)
+        subTabImage.isChecked = true
+        refreshImageThumbnails()
+        updateThumbnail()
+    }
+
     // ═══════════════════════ 内容页参数记忆（#5b）═══════════════════════
     // 浓度全局（Settings.thickness）；抖动/增强等按内容类型分存（text/image/card）。
     // 保存时机 = onPause（离开应用前把各页最终状态写入），恢复时机 = 各页构建完成时。
 
     private fun saveTextPrefs() { textParamsJson()?.let { Settings.saveContentPref("text", it) } }
     private fun saveImagePrefs() { imageParamsJson()?.let { Settings.saveContentPref("image", it) } }
-    private fun saveCardPrefs() { cardParamsJson()?.let { Settings.saveContentPref("card", it) } }
+    // 错题卡字段在弹窗内初始化（#8 并入模板后），未打开过弹窗则跳过记忆
+    private fun saveCardPrefs() { if (::reasonInput.isInitialized) cardParamsJson()?.let { Settings.saveContentPref("card", it) } }
 
     /** 恢复文字页参数（跨会话记忆上次设置；坏数据忽略） */
     private fun restoreTextPrefs() {
@@ -3650,6 +3874,279 @@ class MainActivity : Activity() {
             }
     }
 
+    // ── 变量数据批量打印（2026-08-27 加）──
+
+    /** 批量打印对话框：选 CSV/Excel → {{列名}} 模板绑定 → 首条预览 → 打印全部 */
+    private fun showBatchDialog() {
+        batchColumns = emptyList()
+        batchRows = emptyList()
+        val fileStatus = Design.caption("未选择文件")
+        val template = Design.input("模板，如：姓名：{{姓名}}  电话：{{电话}}", lines = 3)
+        val serialCheck = Design.check("递增流水号（模板中用 {{序号}} 占位，从 1 开始）")
+        val preview = ImageView(this).apply {
+            adjustViewBounds = true
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            maxHeight = Design.dp(200)
+        }
+        val pickBtn = Design.outlineButton("📂 选择 CSV / Excel 文件")
+        pickBtn.setOnClickListener {
+            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "*/*"
+                putExtra(Intent.EXTRA_MIME_TYPES, arrayOf(
+                    "text/csv", "text/comma-separated-values", "application/vnd.ms-excel",
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+            }
+            startActivityForResult(intent, REQ_BATCH_FILE)
+        }
+        serialCheck.setOnCheckedChangeListener { _, _ -> refreshBatchPreview() }
+        template.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun afterTextChanged(s: android.text.Editable?) { refreshBatchPreview() }
+        })
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(Design.dp(8), Design.dp(4), Design.dp(8), Design.dp(4))
+            addView(pickBtn, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+            addView(fileStatus, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = Design.dp(6)
+            })
+            addView(Design.label("模板（{{列名}} 占位符）"), LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = Design.dp(8)
+            })
+            addView(template, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = Design.dp(4)
+            })
+            addView(serialCheck, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = Design.dp(4)
+            })
+            addView(Design.label("首条记录预览"), LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = Design.dp(8)
+            })
+            addView(preview, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        }
+        val scroll = ScrollView(this).apply { addView(content) }
+        batchFileStatus = fileStatus
+        batchTemplateInput = template
+        batchSerialCheck = serialCheck
+        batchPreview = preview
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("📦 变量数据批量打印")
+            .setView(scroll)
+            .setPositiveButton("🖨 打印全部", null)
+            .setNegativeButton("取消", null)
+            .create()
+        batchDialog = dialog
+        dialog.show()
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            val tpl = template.text.toString()
+            if (batchRows.isEmpty()) {
+                fileStatus.setTextColor(Design.ERROR)
+                fileStatus.text = "请先选择 CSV / Excel 文件"
+                return@setOnClickListener
+            }
+            if (tpl.isBlank() || !tpl.contains("{{")) {
+                fileStatus.setTextColor(Design.ERROR)
+                fileStatus.text = "模板需包含 {{列名}} 占位符，如：{{姓名}}"
+                return@setOnClickListener
+            }
+            dialog.dismiss()
+            doBatchPrint(batchRows, tpl, serialCheck.isChecked)
+        }
+    }
+
+    /** 批量首条预览：绑定首条记录 → 文字渲染成栅格 → 预览图 */
+    private fun refreshBatchPreview() {
+        val template = batchTemplateInput?.text?.toString() ?: return
+        val preview = batchPreview ?: return
+        val row = batchRows.firstOrNull()
+        if (row == null) { preview.setImageDrawable(null); return }
+        val bound = bindBatchTemplate(template, row, serial = 1, serialEnabled = batchSerialCheck?.isChecked == true)
+        if (bound.isBlank()) { preview.setImageDrawable(null); return }
+        runCatching {
+            val raster = RasterEncoder.encodeText(bound, fontSizePx = 40)
+            preview.setImageBitmap(RasterEncoder.rasterToPreviewBitmap(raster))
+        }
+    }
+
+    /** {{列名}} 占位符替换：委托 BatchTemplate（纯逻辑，可单测） */
+    private fun bindBatchTemplate(template: String, row: Map<String, String>, serial: Int, serialEnabled: Boolean): String =
+        BatchTemplate.bind(template, row, serial, serialEnabled)
+
+    /**
+     * 批量打印循环：全部生成 → 逐条打印。不走 doPrintConfirmed（批量要持续打完整表，
+     * 单条失败不中止，结束后汇总）。预检一次，之后逐条持续。
+     */
+    private fun doBatchPrint(rows: List<Map<String, String>>, template: String, serialEnabled: Boolean) {
+        otherStatus.text = "准备批量打印 ${rows.size} 条…"
+        otherStatus.setTextColor(Design.TEXT_SUB)
+        scope.launch {
+            try {
+                val fault = printer.preflightCheck()
+                if (fault != null) {
+                    otherStatus.setTextColor(Design.ERROR)
+                    otherStatus.text = "打印被拦截：$fault"
+                    return@launch
+                }
+                // 先全部生成（内存快），生成失败可提前中止省纸
+                val rasters = ArrayList<RasterData>()
+                for (i in rows.indices) {
+                    val bound = bindBatchTemplate(template, rows[i], i + 1, serialEnabled)
+                    if (bound.isBlank()) continue
+                    rasters.add(RasterEncoder.encodeText(bound, fontSizePx = 40))
+                }
+                if (rasters.isEmpty()) {
+                    otherStatus.setTextColor(Design.ERROR)
+                    otherStatus.text = "没有可打印内容：检查模板列名是否与文件列一致"
+                    return@launch
+                }
+                var ok = 0
+                var fail = 0
+                for (i in rasters.indices) {
+                    val r = printer.printRasterCopies(
+                        rasters[i],
+                        thickness = Settings.thickness,
+                        mode = 0,
+                        halveRows = false,
+                        feedBefore = Settings.feedBefore,
+                        feedAfter = Settings.feedAfter,
+                        copies = 1,
+                    )
+                    if (r.ok) ok++ else fail++
+                    otherStatus.text = "批量打印 $ok/${rasters.size} 条…" + if (fail > 0) "（$fail 失败）" else ""
+                }
+                otherStatus.setTextColor(if (fail == 0) Design.OK else Design.ERROR)
+                otherStatus.text = if (fail == 0) "✅ 批量打印完成，共 $ok 条"
+                    else "批量打印完成：$ok 条成功，$fail 条失败"
+                if (ok > 0) {
+                    runCatching {
+                        val first = rasters[0]
+                        HistoryStore.add("批量", "${template.take(14)} 批量 ×$ok", first,
+                            RasterEncoder.rasterToPreviewBitmap(first))
+                    }
+                }
+            } catch (e: Exception) {
+                PrintLog.event("批量打印异常: ${e.javaClass.simpleName}: ${e.message}")
+                otherStatus.setTextColor(Design.ERROR)
+                otherStatus.text = "批量打印异常：${e.javaClass.simpleName} ${e.message}"
+            }
+        }
+    }
+
+    // ── 函数图像打印（2026-08-27 加）──
+
+    /** 函数图像对话框：表达式 + X 范围 → 生成预览 → 打印 */
+    private fun showFunctionGraphDialog() {
+        val exprInput = Design.input("如：sin(x) + x/5", lines = 1)
+        val xMinInput = Design.input("X 起点", lines = 1)
+        xMinInput.setText("-10")
+        val xMaxInput = Design.input("X 终点", lines = 1)
+        xMaxInput.setText("10")
+        val preview = ImageView(this).apply {
+            adjustViewBounds = true
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            maxHeight = Design.dp(320)
+        }
+        val status = Design.caption("")
+        var current: Bitmap? = null
+
+        fun generate() {
+            val expr = exprInput.text.toString().trim()
+            if (expr.isEmpty()) {
+                status.setTextColor(Design.ERROR); status.text = "请输入函数表达式"
+                current = null; return
+            }
+            val xMin = xMinInput.text.toString().trim().toDoubleOrNull() ?: -10.0
+            val xMax = xMaxInput.text.toString().trim().toDoubleOrNull() ?: 10.0
+            status.setTextColor(Design.TEXT_SUB)
+            status.text = "正在渲染…"
+            scope.launch {
+                try {
+                    val bmp = FunctionGraph.render(expr, xMin, xMax)
+                    current = bmp
+                    preview.setImageBitmap(bmp)
+                    status.setTextColor(Design.OK)
+                    status.text = "✅ 已生成，点下方「打印」"
+                } catch (e: Exception) {
+                    current = null
+                    preview.setImageDrawable(null)
+                    status.setTextColor(Design.ERROR)
+                    status.text = "生成失败：${e.message}"
+                }
+            }
+        }
+        val genBtn = Design.outlineButton("📈 生成预览")
+        genBtn.setOnClickListener { generate() }
+
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(Design.dp(8), Design.dp(4), Design.dp(8), Design.dp(4))
+            addView(Design.label("函数表达式"))
+            addView(exprInput, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+            addView(Design.row {
+                addView(xMinInput, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                addView(xMaxInput, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    marginStart = Design.dp(8)
+                })
+            }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = Design.dp(4)
+            })
+            addView(genBtn, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = Design.dp(8)
+            })
+            addView(preview, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+            addView(status)
+        }
+        val scroll = ScrollView(this).apply { addView(content) }
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("📈 函数图像")
+            .setView(scroll)
+            .setPositiveButton("🖨 打印", null)
+            .setNegativeButton("取消", null)
+            .create()
+        dialog.show()
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            val bmp = current ?: run {
+                status.setTextColor(Design.ERROR); status.text = "请先生成预览"
+                return@setOnClickListener
+            }
+            val expr = exprInput.text.toString().trim()
+            dialog.dismiss()
+            printFunctionGraph(bmp, expr)
+        }
+    }
+
+    /** 函数图像打印：位图 → 栅格 → 确认 → 打印（走模板链路 mode=2） */
+    private fun printFunctionGraph(bmp: Bitmap, expr: String) {
+        otherStatus.text = "正在生成函数图像预览…"
+        otherStatus.setTextColor(Design.TEXT_SUB)
+        scope.launch {
+            try {
+                val raster = RasterEncoder.encode(bmp, DitherMode.NONE, RasterEncoder.THRESHOLD_TEXT)
+                val pbmp = imagePreviewRaster(raster)
+                previewConfirmDialog("确认打印函数图像", pbmp) { copies ->
+                    doPrintConfirmed(raster, mode = 2, halveRows = true, okMessage = "函数图像打印完成",
+                        statusView = otherStatus, historyType = "模板", historyTitle = "f(x)=$expr",
+                        copies = copies)
+                }
+            } catch (e: Exception) {
+                PrintLog.event("函数图像异常: ${e.javaClass.simpleName}: ${e.message}")
+                otherStatus.setTextColor(Design.ERROR)
+                otherStatus.text = "函数图像异常：${e.javaClass.simpleName} ${e.message}"
+            }
+        }
+    }
+
     /**
      * OTA 升级完成后弹「更新说明」（2026-08-17 加）：
      * 装好新包后下次启动，比对上次运行版本（Settings.lastSeenVersion），
@@ -3735,13 +4232,16 @@ class MainActivity : Activity() {
         )
     }
 
-    /** 自检页（藏在我的页）：Floyd 抖动渲染灰阶渐变 */
+    /**
+     * 自检页（藏在我的页）：Floyd 抖动渲染灰阶渐变。
+     * 状态反馈挂其它页 otherStatus（错题卡弹窗 2026-08-27 并入模板后 cardStatus 不再稳定存在）。
+     */
     private fun printSelfTest() {
         if (selectedImages.isNotEmpty()) {
-            cardStatus.text = "请先清除题目图片再打自检页"
+            otherStatus.text = "请先清除题目图片再打自检页"
             return
         }
-        cardStatus.text = "正在生成自检页预览 ..."
+        otherStatus.text = "正在生成自检页预览 ..."
         scope.launch {
             try {
                 val page = SelfTest.build()
@@ -3749,13 +4249,13 @@ class MainActivity : Activity() {
                 val bmp = imagePreviewRaster(raster)
                 previewConfirmDialog("确认打印自检页", bmp) { copies ->
                     doPrintConfirmed(raster, mode = 2, halveRows = true, okMessage = "自检页打印完成",
-                        statusView = cardStatus, historyType = "自检页", historyTitle = "打印测试页",
+                        statusView = otherStatus, historyType = "自检页", historyTitle = "打印测试页",
                         copies = copies)
                 }
             } catch (e: Exception) {
                 PrintLog.event("自检页异常: ${e.javaClass.simpleName}: ${e.message}")
-                cardStatus.setTextColor(Design.ERROR)
-                cardStatus.text = "自检页异常：${e.javaClass.simpleName} ${e.message}"
+                otherStatus.setTextColor(Design.ERROR)
+                otherStatus.text = "自检页异常：${e.javaClass.simpleName} ${e.message}"
             }
         }
     }

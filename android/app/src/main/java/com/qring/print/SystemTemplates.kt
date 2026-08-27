@@ -23,14 +23,22 @@ object SystemTemplates {
     const val ACTION_WORD = "wordList"
     const val ACTION_PLAN = "dailyPlan"
     const val ACTION_MATH = "mathDialog"
+    const val ACTION_BATCH = "batchPrint"
+    const val ACTION_GRAPH = "functionGraph"
+    const val ACTION_CARD_STD = "cardStd"
+    const val ACTION_CARD_REVIEW = "cardReview"
 
-    /** 内置 JSON 注册表：系统模板清单（含口算题弹窗） */
+    /** 内置 JSON 注册表：系统模板清单（含口算题/批量/函数图像/错题卡弹窗） */
     private val REGISTRY_JSON = """
         [
-          { "icon": "course", "label": "课程表",   "build": "courseTable" },
-          { "icon": "word",   "label": "单词表",   "build": "wordList" },
-          { "icon": "plan",   "label": "每日计划", "build": "dailyPlan" },
-          { "icon": "math",   "label": "口算题",   "build": "mathDialog" }
+          { "icon": "course", "label": "课程表",     "build": "courseTable" },
+          { "icon": "word",   "label": "单词表",     "build": "wordList" },
+          { "icon": "plan",   "label": "每日计划",   "build": "dailyPlan" },
+          { "icon": "math",   "label": "口算题",     "build": "mathDialog" },
+          { "icon": "print",  "label": "批量打印",   "build": "batchPrint" },
+          { "icon": "math",   "label": "函数图像",   "build": "functionGraph" },
+          { "icon": "card",   "label": "错题卡",     "build": "cardStd" },
+          { "icon": "card",   "label": "错题卡·复习", "build": "cardReview" }
         ]
     """.trimIndent()
 

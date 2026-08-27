@@ -24,7 +24,7 @@ class ReleaseNotesTest {
 
     @Test
     fun `说明收集 当前已最新返回 null`() {
-        assertNull("与日志最新版本相同应无说明", ReleaseNotes.notesSince("0.7.3"))
+        assertNull("与日志最新版本相同应无说明", ReleaseNotes.notesSince("0.7.4"))
     }
 
     @Test
@@ -65,6 +65,6 @@ class ReleaseNotesTest {
         assertTrue("含 0.7.2", notes.contains("【0.7.2】"))
         assertTrue("含 0.7.1", notes.contains("【0.7.1】"))
         assertTrue("含 0.7.0", notes.contains("【0.7.0】"))
-        assertEquals("全部 9 条", 9, notes.split("【").size - 1)
+        assertEquals("全部 10 条", 10, notes.split("【").size - 1)
     }
 }

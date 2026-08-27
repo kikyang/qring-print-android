@@ -133,7 +133,7 @@ class MainActivityUiTest {
     // ── 测试用例 ────────────────────────────────────────────────
 
     @Test
-    fun `启动后三Tab与六个功能块构建成功`() {
+    fun `启动后三Tab与功能块构建成功`() {
         val activity = Robolectric.buildActivity(MainActivity::class.java).setup().get()
         val root = activity.window.decorView
 
@@ -144,14 +144,14 @@ class MainActivityUiTest {
         for (label in listOf("文字", "图片", "条码", "文档", "其它")) {
             assertNotNull("二级功能块「$label」应存在", findText(root, label))
         }
-        // 其它页内容（常用模板 + 错题卡）构建成功
+        // 其它页内容（常用模板 + 我的模板）构建成功；错题卡已并入模板宫格（#8）
         clickBottomTab(activity, "打印")
         (findText(root, "其它") as? RadioButton)?.performClick()
         idle()
         assertNotNull("常用模板标题", findText(root, "常用模板"))
-        assertNotNull("错题卡入口标题", findText(root, "错题卡打印"))
-        // 模板宫格（2×2 图标，label 无 emoji）
-        for (label in listOf("课程表", "单词表", "每日计划", "口算题")) {
+        assertNotNull("我的模板标题", findText(root, "我的模板"))
+        // 模板宫格（2×2 图标，label 无 emoji；错题卡两个入口在模板内）
+        for (label in listOf("课程表", "单词表", "每日计划", "口算题", "批量打印", "函数图像", "错题卡", "错题卡·复习")) {
             assertNotNull("模板宫格「$label」应存在", findText(root, label))
         }
     }
@@ -336,13 +336,15 @@ class MainActivityUiTest {
         val intent = Intent(ApplicationProvider.getApplicationContext(), MainActivity::class.java)
             .putExtra(MainActivity.EXTRA_EDIT_JOB, id)
         val activity = Robolectric.buildActivity(MainActivity::class.java, intent).setup().get()
-        val root = activity.window.decorView
         idle()
-        // 错题卡在「其它」页，恢复后应可见
-        val reason = findEditTextByHint(root, "错因（如：概念不清）")
+        // 错题卡并入模板系统后（#8）：再编辑会打开错题卡弹窗，参数恢复在弹窗内
+        val dialog = org.robolectric.shadows.ShadowDialog.getLatestDialog()
+        assertNotNull("错题卡弹窗应弹出", dialog)
+        val dRoot = dialog!!.window!!.decorView
+        val reason = findEditTextByHint(dRoot, "错因（如：概念不清）")
         assertNotNull("错因输入框应存在", reason)
         assertEquals("错因应恢复", "概念不清", reason!!.text.toString())
-        val knowledge = findEditTextByHint(root, "知识点（如：一元二次方程）")
+        val knowledge = findEditTextByHint(dRoot, "知识点（如：一元二次方程）")
         assertNotNull("知识点输入框应存在", knowledge)
         assertEquals("知识点应恢复", "一元二次方程", knowledge!!.text.toString())
     }
@@ -474,18 +476,22 @@ class MainActivityUiTest {
     }
 
     @Test
-    fun `系统模板注册表内置JSON驱动四项`() {
+    fun `系统模板注册表内置JSON驱动八项`() {
         val tpls = SystemTemplates.load()
-        assertEquals("注册表应有 4 个系统模板", 4, tpls.size)
+        assertEquals("注册表应有 8 个系统模板", 8, tpls.size)
         assertEquals(
             "模板名与顺序一致",
-            listOf("课程表", "单词表", "每日计划", "口算题"),
+            listOf("课程表", "单词表", "每日计划", "口算题", "批量打印", "函数图像", "错题卡", "错题卡·复习"),
             tpls.map { it.label },
         )
         assertEquals("课程表 → 纯位图生成", SystemTemplates.ACTION_COURSE, tpls[0].build)
         assertEquals(SystemTemplates.ACTION_WORD, tpls[1].build)
         assertEquals(SystemTemplates.ACTION_PLAN, tpls[2].build)
         assertEquals("口算题 → 弹窗", SystemTemplates.ACTION_MATH, tpls[3].build)
+        assertEquals("批量打印 → 弹窗", SystemTemplates.ACTION_BATCH, tpls[4].build)
+        assertEquals("函数图像 → 弹窗", SystemTemplates.ACTION_GRAPH, tpls[5].build)
+        assertEquals("错题卡 → 弹窗(标准版)", SystemTemplates.ACTION_CARD_STD, tpls[6].build)
+        assertEquals("错题卡·复习 → 弹窗(复习版)", SystemTemplates.ACTION_CARD_REVIEW, tpls[7].build)
     }
 
     @Test

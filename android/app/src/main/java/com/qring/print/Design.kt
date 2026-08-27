@@ -52,23 +52,25 @@ object Design {
 
     private val pal: Palette
         get() = when (theme) {
+            // 忠实还原上游 soulxyz/xyprt_android "Paper + ink + calm teal"（Color.kt 精确值）
             UiTheme.XYPRT -> if (isDark) Palette(
-                0xFF7A9BFF.toInt(), 0xFF6A8BFF.toInt(), 0xFF25345C.toInt(), 0xFFAFC4FF.toInt(),
-                0xFF262626.toInt(), 0xFFE5E5E5.toInt(), 0xFF111114.toInt(), 0xFF1C1C22.toInt(),
-                0xFF26262E.toInt(), 0xFFE5E5E5.toInt(), 0xFF9A9A9A.toInt(), 0xFF3A3A44.toInt(), 0xFF2A2A32.toInt(),
+                0xFF8BD5C2.toInt(), 0xFF5FB89F.toInt(), 0xFF0E5144.toInt(), 0xFFB2F1DF.toInt(),
+                0xFF354A43.toInt(), 0xFFD2E8E0.toInt(), 0xFF111412.toInt(), 0xFF171A18.toInt(),
+                0xFF1C201D.toInt(), 0xFFE6EAE7.toInt(), 0xFFBCC4BE.toInt(), 0xFF89918C.toInt(), 0xFF404742.toInt(),
             ) else Palette(
-                0xFF3B6EF6.toInt(), 0xFF2F5FE0.toInt(), 0xFFE8EFFF.toInt(), 0xFF3B6EF6.toInt(),
-                0xFFF2F3F5.toInt(), 0xFF191919.toInt(), 0xFFF5F6FA.toInt(), 0xFFFFFFFF.toInt(),
-                0xFFF0F1F5.toInt(), 0xFF1A1A1A.toInt(), 0xFF888888.toInt(), 0xFFD8DCE5.toInt(), 0xFFEAECF0.toInt(),
+                0xFF176B5B.toInt(), 0xFF0E4F42.toInt(), 0xFFD6EFE7.toInt(), 0xFF08261F.toInt(),
+                0xFFDDEAE5.toInt(), 0xFF152823.toInt(), 0xFFFAFAF7.toInt(), 0xFFFFFFFF.toInt(),
+                0xFFF3F5F1.toInt(), 0xFF1B1D1C.toInt(), 0xFF5D625F.toInt(), 0xFFBEC6C0.toInt(), 0xFFDDE3DE.toInt(),
             )
             UiTheme.MIAOMIAO -> if (isDark) Palette(
                 0xFF6FA8E8.toInt(), 0xFF5F9ADF.toInt(), 0xFF233A55.toInt(), 0xFFA8CCF5.toInt(),
                 0xFF262626.toInt(), 0xFFE5E5E5.toInt(), 0xFF10151C.toInt(), 0xFF1A212B.toInt(),
                 0xFF242D39.toInt(), 0xFFE5E5E5.toInt(), 0xFF9A9A9A.toInt(), 0xFF3A4655.toInt(), 0xFF2A3440.toInt(),
             ) else Palette(
-                0xFF4A90D9.toInt(), 0xFF3D7FC7.toInt(), 0xFFE3F0FC.toInt(), 0xFF4A90D9.toInt(),
-                0xFFF2F4F7.toInt(), 0xFF191919.toInt(), 0xFFF0F4FF.toInt(), 0xFFFFFFFF.toInt(),
-                0xFFE8EEF7.toInt(), 0xFF1A1A1A.toInt(), 0xFF888888.toInt(), 0xFFD5DEE9.toInt(), 0xFFE8EEF5.toInt(),
+                // 清新蓝白：淡蓝纸底 + 纯白卡 + 喵喵机蓝（恢复初始版 M3 精致感）
+                0xFF4A90D9.toInt(), 0xFF3D7FC7.toInt(), 0xFFDCEBFB.toInt(), 0xFF2E6FA8.toInt(),
+                0xFFEDF3FA.toInt(), 0xFF20303F.toInt(), 0xFFF5F9FF.toInt(), 0xFFFFFFFF.toInt(),
+                0xFFEAF2FA.toInt(), 0xFF1A2530.toInt(), 0xFF7C8FA3.toInt(), 0xFFC7D8E8.toInt(), 0xFFE3EDF6.toInt(),
             )
             else -> if (isDark) Palette(
                 0xFF07C160.toInt(), 0xFF06AD56.toInt(), 0xFF1F3D2C.toInt(), 0xFF8BE8B4.toInt(),
@@ -105,11 +107,11 @@ object Design {
     val TEXT_SUB: Int get() = ON_SURFACE_VARIANT
     val DIVIDER: Int get() = OUTLINE_VARIANT
     val PRIMARY_LIGHT: Int get() = PRIMARY_CONTAINER
-    /** 小圆角：随主题变化——微信 8px / xyprt 6px / 喵喵机胶囊 18px */
+    /** 小圆角：随主题变化——微信 8px / xyprt 12dp(M3 small) / 喵喵机 12dp tonal 卡 */
     val RADIUS_SM: Float
         get() = when (theme) {
-            UiTheme.XYPRT -> 6f
-            UiTheme.MIAOMIAO -> 18f
+            UiTheme.XYPRT -> 12f
+            UiTheme.MIAOMIAO -> 12f
             else -> 8f
         }
 
@@ -142,16 +144,25 @@ object Design {
         setBackgroundColor(SURFACE)
     }
 
-    /** 顶部标题栏：微信导航栏风（白底黑字 + 底部细分隔线） */
+    /** 顶部标题栏：微信/xyprt 导航栏风（中性底 + 墨黑字）；仿喵喵机 = 蓝白渐变大圆角 */
     fun header(text: String): LinearLayout = LinearLayout(Utils.appContext()).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
         setPadding(dp(20), dp(16), dp(20), dp(16))
-        setBackgroundColor(SURFACE_CONTAINER_LOW)
+        if (theme == UiTheme.MIAOMIAO) {
+            // 恢复初始版（09c171b）渐变标题栏，换蓝白
+            background = GradientDrawable(
+                GradientDrawable.Orientation.LEFT_RIGHT,
+                if (isDark) intArrayOf(0xFF1B3A5C.toInt(), 0xFF2E6FA8.toInt())
+                else intArrayOf(0xFF4A90D9.toInt(), 0xFF6FB1E8.toInt())
+            ).apply { cornerRadius = SHAPE_LARGE }
+        } else {
+            setBackgroundColor(SURFACE_CONTAINER_LOW)
+        }
         addView(TextView(Utils.appContext()).apply {
             this.text = text
-            textSize = 18f
-            setTextColor(ON_SURFACE)
+            textSize = if (theme == UiTheme.MIAOMIAO) 20f else 18f
+            setTextColor(if (theme == UiTheme.MIAOMIAO && !isDark) 0xFFFFFFFF.toInt() else ON_SURFACE)
             typeface = Typeface.DEFAULT_BOLD
         })
     }
@@ -169,12 +180,16 @@ object Design {
     fun card(container: (LinearLayout.() -> Unit)): LinearLayout = card().also { it.container() }
 
     // ── 文字（微信层级：标题粗黑 / 正文深灰 / 辅助浅灰）──
-    /** 小节标题：微信"标题"样式（纯文字粗体，无胶囊背景） */
+    /** 小节标题：微信"标题"样式（纯文字粗体）；仿喵喵机 = primary-container 胶囊标签（恢复初始版） */
     fun sectionTitle(text: String): TextView = TextView(Utils.appContext()).apply {
         this.text = text
-        textSize = 16f
-        setTextColor(ON_SURFACE)
+        textSize = if (theme == UiTheme.MIAOMIAO) 15f else 16f
+        setTextColor(if (theme == UiTheme.MIAOMIAO) ON_PRIMARY_CONTAINER else ON_SURFACE)
         typeface = Typeface.DEFAULT_BOLD
+        if (theme == UiTheme.MIAOMIAO) {
+            setPadding(dp(12), dp(6), dp(12), dp(6))
+            background = rounded(PRIMARY_CONTAINER, SHAPE_MEDIUM)
+        }
     }
 
     fun caption(text: String): TextView = TextView(Utils.appContext()).apply {
@@ -194,7 +209,7 @@ object Design {
     // ── 按钮（微信风：8px 圆角方按钮，非胶囊）──
     private fun buttonRadius(): Float = when (theme) {
         UiTheme.MIAOMIAO -> SHAPE_FULL
-        UiTheme.XYPRT -> 6f
+        UiTheme.XYPRT -> SHAPE_FULL   // 上游 M3 FilledButton 默认胶囊
         else -> SHAPE_SMALL
     }
 
