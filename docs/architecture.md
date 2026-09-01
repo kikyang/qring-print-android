@@ -2,7 +2,7 @@
 
 > 给人类看的架构文档：不解释每一行代码，而是讲清楚"这套系统是怎么拼起来的、每个部件为什么存在"。
 > 读完本文你应该能回答：一条错题从手机屏幕到热敏纸，中间经历了什么？
-> 最近同步：v0.7.2（2026-08-18）。
+> 最近同步：v0.7.5（2026-09-01）。
 
 ---
 
@@ -161,9 +161,25 @@ STOP（复位）→ ENABLE（使能）→ 浓度 → 唤醒 → ESC@（解析器
 
 ```
 其它 Tab
- ├── 常用模板宫格（2×2 图标）：课程表 / 单词表 / 每日计划 / 口算题（一键生成 → 走图片通道）
- └── 错题卡：题目图（可选，多图拼接 + 全套预处理）+ 错因 + 知识点 + 订正/举一反三手写区
+ ├── 系统模板宫格（图标，v0.7.4 扩容）：课程表 / 单词表 / 每日计划 / 口算题 / 批量打印 / 函数图像 / 错题卡 / 错题卡·复习
+ │   （一键生成 → 走图片通道；注册表数据驱动 = SystemTemplates.kt，新课只需加一行 JSON）
+ │   ├── 批量打印：导入 CSV/Excel，用 {{列名}} 占位符套模板整表一次打完，可开递增流水号 {{序号}}
+ │   ├── 函数图像：输入表达式（如 x^2-3）求值并渲染成坐标图打印
+ │   └── 错题卡：题目图（可选，多图拼接 + 全套预处理）+ 错因 + 知识点 + 订正/举一反三手写区
+ └── 我的模板宫格：画布存下的版式（缩略图 + 点击进画布继续编辑 + 长按删除）
 ```
+
+这些"模板"与普通打印没有本质区别：**先在内存里摆好一张 384 点宽的位图，再走统一打印流**。
+v0.7.4 起所有打印路径（文字/图片/条码/文档/模板/批量）最终汇聚到**统一准备打印页 + 统一打印确认条**
+（份数 / 打印浓度 / 前后走纸），保证"先预览、确认再打、走纸一致"。
+
+批量打印与函数图像是 v0.7.4 新增的**两条内容生成管线**（各自独立、纯 Kotlin 可单测）：
+
+- 批量打印（`BatchTemplate` + `CsvTableParser` + `XlsxTableExtractor`）：把 CSV/Excel 的每一行
+  绑进 `{{列名}}` 模板，逐条渲染成栅格，逐条持续打印（单条失败不中止、结束后汇总）。
+  递增流水号 `{{序号}}` 可开/关，默认从 1 开始。
+- 函数图像（`ExpressionEvaluator` + `FunctionGraph`）：表达式求值器（支持 `x^2-3`、三角函数等）
+  + 坐标系渲染器，把函数曲线画成 384 宽位图走图片通道。
 
 手写区横线设计成**练习本风格**（横线在格子底边，行高 10mm）——
 因为错题卡打印出来是给学生手写订正用的，行距不够会写不下。
@@ -191,8 +207,8 @@ STOP（复位）→ ENABLE（使能）→ 浓度 → 唤醒 → ESC@（解析器
 | 文档解析竞态防护 | 新任务取消旧协程（大文件晚完成会覆盖新结果），CancellationException 不吞 |
 | BLE 分包 + 节奏控制 | 96B/包 + 40ms 间隔，防丢包；SPP 1024B/块 + 1ms |
 | 三通道共享打印时序 | PrintJobRunner 统一编排，BLE/SPP/FakePrinter 三通道跑同一份代码——实物联调只剩 GATT 写 + 热敏头物理两个未知量 |
-| **自动化测试（99 例）** | `gradle runUnitTests`：协议（15）/算法（13）/模板·历史·设置（13）/Robolectric 界面（19）/虚拟打印机协议引擎（21）/端到端链路（15）/性能基准（3）。注意：Gradle Test worker 在中文路径下 classpath 失效，用 JavaExec 任务绕开（见 README） |
-| **R8 瘦身** | release 开 minify（AGP 8.5.2），APK 6.4MB → 0.87MB；zxing 自带 consumer rules，mapping 验证功能类全保留 |
+| **自动化测试（198 例）** | `gradle runUnitTests`：协议（15）/算法（13）/模板·历史·设置（13）/Robolectric 界面（19）/虚拟打印机引擎（21）/端到端（15）/性能基准（3）；其余为 v0.7.x 分批补充——图片增强·变换·裁剪、Markdown、PPT/公式排版、批量打印（CSV/XLSX/模板）、函数图像、OTA 更新说明、条码 13 种与校验/清洗。注意：Gradle Test worker 在中文路径下 classpath 失效，用 JavaExec 任务绕开（见 README） |
+| **R8 瘦身** | release 开 minify（AGP 8.5.2），APK 6.4MB → 0.87MB（v0.7.2）→ ~1.0MB（v0.7.5，新增条码码制/批量/函数图后略增）；zxing 自带 consumer rules，mapping 验证功能类全保留 |
 
 ### 6.1 OTA 检查更新（v0.5.2 起）
 
@@ -230,6 +246,12 @@ android/app/src/main/java/com/qring/print/
 ├── Canny.kt / Outline.kt     # 描边：Canny 边缘检测 / LINES 墨水对比度 + 加粗
 ├── Morphology.kt / Contrast.kt  # 形态学去噪 / 对比度膝形曲线
 ├── ImageEnhancer.kt          # 图片增强：直方图拉伸+Sauvola 二值化、消除笔、自动裁白边
+├── ImageTransform.kt         # 图片旋转 0/90/180/270 + 缩放 50%~200%
+├── ImageCropDialog.kt        # 手动裁剪（自由/1:1/3:4/4:3）
+├── MarkdownParser.kt / MarkdownRenderer.kt  # Markdown 解析 + 384 宽渲染（零依赖）
+├── PptxTextExtractor.kt      # PPT pptx 文本提取
+├── DocxLayoutExtractor.kt / MathLayout.kt / DocLayoutRenderer.kt  # Word 版式 + OMML 公式排版引擎
+├── ReleaseNotes.kt           # OTA 更新说明（跨版本收集，纯 Kotlin 可单测）
 ├── PdfPrintRenderer.kt       # PDF → 384px 位图（系统 PdfRenderer 逐页+裁白边+拼接）
 ├── DocxTextExtractor.kt      # Word docx 纯文本（zip + XmlPullParser 流式）
 ├── XlsxTextExtractor.kt      # Excel xlsx 表格文本（sharedStrings + sheet1）
@@ -241,7 +263,12 @@ android/app/src/main/java/com/qring/print/
 ├── CanvasEditor.kt           # 统一画布：元素模型 + 384 宽渲染 + 模板 JSON 存取（含涂鸦笔画）
 ├── CanvasLayout.kt           # 画布视图：拖拽/命中检测/缩放/置顶/涂鸦模式
 ├── UpdateManager.kt          # OTA：jsDelivr 检查 + 下载 + FileProvider 安装（GitHub fallback）
-├── BarcodeGenerator.kt       # 条码/二维码（zxing，QR + 7 种一维码，内容实时校验）
+├── BarcodeGenerator.kt       # 条码/二维码（zxing，13 种可写码制 + 输入清洗/校验位重算）
+├── BatchTemplate.kt          # 批量打印占位符绑定（{{列名}} + 递增流水号 {{序号}}，纯逻辑可单测）
+├── CsvTableParser.kt         # CSV 解析 → 记录行（含引号/逗号转义）
+├── XlsxTableExtractor.kt     # Excel xlsx 表 → 记录行（sharedStrings + 行列）
+├── ExpressionEvaluator.kt    # 函数表达式求值器（x^2-3、三角函数等）
+├── FunctionGraph.kt          # 函数曲线 → 384 宽坐标图位图
 ├── SelfTest.kt               # 打印测试页（浓度线/线条/灰阶渐变/文字）
 ├── PrintLog.kt               # 日志：内存环形缓冲 + 关键事件落盘
 ├── HistoryStore.kt / HistoryActivity.kt  # 打印历史（无损光栅重打 + 缩略图）
@@ -252,14 +279,21 @@ android/app/src/main/java/com/qring/print/
 ├── FakePrinterConnection.kt  # 虚拟打印机连接（PrinterConnection 实现，测试注入）
 └── MainActivity.kt           # 主界面：三 Tab（首页/打印/我的）+ 全部交互
 
-test/ 目录（99 例，`gradle runUnitTests`）：
+test/ 目录（198 例，`gradle runUnitTests`）：
 ├── QringProtocolTest.kt      # 协议字节/状态位/指令构造（15 例）
 ├── DitherTest.kt / CannyTest.kt  # 抖动/边缘检测算法（13 例）
 ├── TemplateBuilderTest.kt / HistoryStoreTest.kt / SettingsTest.kt  # 模板/历史/设置（13 例）
 ├── MainActivityUiTest.kt     # Robolectric 界面测试（19 例：启动/图标/预览/排版/模板/参数记忆/画布/宫格/分工）
 ├── FakePrinterTest.kt        # 虚拟打印机协议引擎（21 例）
 ├── FakePrinterE2ETest.kt     # 端到端链路（15 例）
-└── ImagePipelineBenchTest.kt # 图像管线性能基准（3 例）
+├── ImagePipelineBenchTest.kt # 图像管线性能基准（3 例）
+├── ImageEnhancerTest.kt / ImageTransformTest.kt       # 图片增强/旋转缩放（v0.7.0）
+├── MarkdownParserTest.kt / MarkdownRendererTest.kt    # Markdown 解析/渲染（v0.7.0）
+├── MathLayoutTest.kt         # Word 公式排版（v0.7.2）
+├── CsvTableParserTest.kt / XlsxTableExtractorTest.kt / BatchTemplateTest.kt  # 批量打印（v0.7.4）
+├── ExpressionEvaluatorTest.kt / FunctionGraphTest.kt  # 函数图像（v0.7.4）
+├── ReleaseNotesTest.kt       # OTA 更新说明（v0.7.1）
+└── BarcodeGeneratorTest.kt   # 条码 13 种 + 校验/清洗（v0.7.5）
 ```
 
 数据流一句话总结：

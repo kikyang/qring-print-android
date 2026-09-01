@@ -242,14 +242,14 @@ BLE 传输：1M 像素光栅 ≈ 125KB 数据，按 32B/包 × 80ms 节奏传输
 │       ├── CanvasLayout.kt           # 元素排版：拖拽/命中/缩放/置顶/涂鸦模式
 │       ├── UpdateManager.kt          # OTA 检查更新（jsDelivr + GitHub fallback）
 │       ├── SelfTest.kt               # 打印测试页
-│       ├── BarcodeGenerator.kt       # 条码/二维码（zxing，QR + 7 种一维码）
+│       ├── BarcodeGenerator.kt       # 条码/二维码（zxing，13 种可写码制 + 输入清洗/校验位重算）
 │       ├── PrintLog.kt               # 日志：内存环形缓冲 + 关键事件落盘
 │       ├── HistoryStore.kt / HistoryActivity.kt  # 打印历史（无损光栅重打）
 │       ├── Settings.kt               # 打印设置持久化（浓度/走纸/阈值等）
 │       ├── DebugActivity.kt          # 调试台（收发 hex 日志/原始命令）
 │       ├── Design.kt                 # 微信风设计系统（含线性图标）
 │       └── MainActivity.kt           # 三 Tab 主界面
-│   └── app/src/test/java/com/qring/print/  # 99 例测试
+│   └── app/src/test/java/com/qring/print/  # 198 例测试
 │       ├── QringProtocolTest.kt      # 协议字节/状态位/指令构造（15 例）
 │       ├── DitherTest.kt / CannyTest.kt  # 抖动/边缘检测算法（13 例）
 │       ├── TemplateBuilderTest.kt / HistoryStoreTest.kt / SettingsTest.kt
