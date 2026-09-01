@@ -11,6 +11,9 @@ object ReleaseNotes {
 
     // 版本 → 更新说明，新版本在前。发版时在顶部新增一条（与 version.json notes 保持一致）。
     private val LOG = listOf(
+        "0.7.5" to "· 条码扩至 13 种码制：新增 Code93 / UPC-E / DataMatrix / Aztec / PDF-417\n" +
+            "· 条码输入清洗 + 校验位重算：EAN/UPC 校验位自动核验、ITF 奇数自动补位、Code39/93 转大写、Codabar 去空白\n" +
+            "· 上游巡检降为一周一次（3 天周期已完成 3 次）",
         "0.7.4" to "· 变量数据批量打印：导入 CSV/Excel，用 {{列名}} 占位符套模板，整表一次打完\n" +
             "· 函数图像打印：输入表达式（如 x^2-3）生成坐标图\n" +
             "· 错题卡并入常用模板宫格，入口更好找\n" +
