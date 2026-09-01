@@ -20,7 +20,7 @@
 
 ## 下载 APK
 
-最新版见 [Releases](https://github.com/kikyang/qring-print-android/releases)（v0.7.4，1.0MB，需 Android 13+）。
+最新版见 [Releases](https://github.com/kikyang/qring-print-android/releases)（v0.7.5，约 1.0MB，需 Android 13+）。
 应用内「我的 → 关于 → 检查更新」可直接升级到新版本（检查走 jsDelivr，国内网络可用；
 发版后 2-3 小时内新版可能尚未被收录，属正常延迟）。
 
@@ -153,12 +153,14 @@
 
 ```bash
 cd android
-gradle runUnitTests       # 单元测试（协议/算法/界面/虚拟打印机端到端 + 性能基准，共 99 例）
-gradle assembleRelease    # 正式签名 release（R8 已开，APK ~0.9MB）
+gradle runUnitTests       # 单元测试（协议/算法/界面/虚拟打印机端到端 + 性能基准，共 198 例）
+gradle assembleRelease    # 正式签名 release（R8 已开，APK ~1.0MB）
 gradle assembleDebug      # 调试版（无 R8，~6.4MB）
 ```
 
-### 测试覆盖（2026-08-12 建立，08-13 扩到 99 例）
+### 测试覆盖（2026-08-12 建立，**2026-09-01 全量 198 例**）
+
+> 下列为分批补充的测试类（合计 198 例）；新增测试类后记得把类名加进 `app/build.gradle.kts` 的 `runUnitTests.args`。
 
 - **协议层**（QringProtocolTest，15 例）：状态位解析、开盖/缺纸提示优先级、指令字节序、走纸/光栅头拆分
 - **算法层**（DitherTest / CannyTest，13 例）：抖动密度统计、阈值语义、边缘检测边界
@@ -175,9 +177,13 @@ gradle assembleDebug      # 调试版（无 R8，~6.4MB）
   BLE/SPP/Fake 三通道共享同一份代码——**实物联调只剩 GATT 写特征 + 热敏头物理
   两个未知量**
 - **性能基准**（ImagePipelineBenchTest，3 例，JVM 参考值见下节）
+- **后续新增**（v0.7.x 分批补充，合计 198 例）：图片增强/变换/裁剪（ImageEnhancerTest / ImageTransformTest）、
+  Markdown 打印（MarkdownParserTest / MarkdownRendererTest）、PPT 导入与 Word 公式排版（MathLayoutTest）、
+  批量打印（CsvTableParserTest / XlsxTableExtractorTest / BatchTemplateTest）、函数图像
+  （ExpressionEvaluatorTest / FunctionGraphTest）、OTA 更新说明（ReleaseNotesTest）、
+  条码 13 种与校验/清洗（BarcodeGeneratorTest）
 - 首次跑 Robolectric 会自动下载 android-all 镜像（约 150MB，此后缓存于 ~/.robolectric）；
   蓝牙在 shadow 下为空实现
-- 新增测试类后记得把类名加进 `app/build.gradle.kts` 的 `runUnitTests.args`
 
 ### 图像管线性能基准（2026-08-13 实测，JVM 参考值）
 
