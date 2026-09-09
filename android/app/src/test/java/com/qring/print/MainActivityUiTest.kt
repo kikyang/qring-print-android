@@ -198,9 +198,45 @@ class MainActivityUiTest {
         assertTrue("预览应生成位图", preview!!.drawable != null)
     }
 
-    /** 打开统一画布 Dialog（图片页 → 🖌 画布，涂鸦/排版合流） */
-    private fun openLayoutDialog(activity: MainActivity) {
+    @Test
+    fun `打印确认对话框内容在ScrollView内且确认按钮可见`() {
+        // issue #5（2026-09-01 用户报告）：预览图较高时确认条/确认按钮被挤出屏幕且无法滚动。
+        // 防回归：确认条（份数）必须位于 ScrollView 内，且预览图与它同容器。
+        val activity = Robolectric.buildActivity(MainActivity::class.java).setup().get()
         val root = activity.window.decorView
+        clickBottomTab(activity, "打印")
+
+        val input = findEditTextByHint(root, "输入要打印的文字（如错题内容）")
+        assertNotNull("文字输入框应存在", input)
+        input!!.setText("确认条滚动防回归")
+        idle()
+
+        val printBtn = findText(root, "🖨 打印文字")
+        assertNotNull("打印按钮应存在", printBtn)
+        printBtn!!.performClick()
+        idle()
+
+        val dialog = org.robolectric.shadows.ShadowDialog.getLatestDialog()
+        assertNotNull("确认打印对话框应显示", dialog)
+        val dialogRoot = dialog!!.window!!.decorView
+        val scroll = findScrollContaining(dialogRoot, "份数 1")
+        assertNotNull("确认条应位于 ScrollView 内（issue #5 防回归）", scroll)
+        assertNotNull("预览图应与确认条同在一个 ScrollView 内", findPreviewImage(scroll!!))
+    }
+
+    /** DFS 找包含指定文本的 ScrollView（issue #5：确认对话框内容需可滚动） */
+    private fun findScrollContaining(root: View, text: String): ScrollView? {
+        if (root is ScrollView && findText(root, text) != null) return root
+        if (root is ViewGroup) {
+            for (i in 0 until root.childCount) {
+                findScrollContaining(root.getChildAt(i), text)?.let { return it }
+            }
+        }
+        return null
+    }
+
+    /** 打开统一画布 Dialog（图片页 → 🖌 画布，涂鸦/排版合流） */
+    private fun openLayoutDialog(activity: MainActivity) {        val root = activity.window.decorView
         clickBottomTab(activity, "打印")
         val layoutBtn = findText(root, "🖌 画布")
         assertNotNull("「🖌 画布」按钮应存在", layoutBtn)

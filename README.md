@@ -26,10 +26,12 @@
 
 ## 更新日志
 
-- **v0.7.6（2026-09-05）**：**界面主题改为 8 套差异化风格**（移除旧微信风/简洁风/蓝白风）：
+- **v0.7.6（2026-09-09）**：**界面主题改为 8 套差异化风格**（移除旧微信风/简洁风/蓝白风）：
   **紫罗兰 / 墨绿纸感 / 暗色效能 / 手账纸感 / 热敏黑白 / 奶油多彩 / Apple Bento / 玻璃拟态**；
   我的页主题选择改为竖向列表（色卡 + 名称 + 勾选态，选完立即生效）；
-  设计稿见 `docs/ui-design/`（含 8 套新风格 HTML 预览与整页截图）；198 例测试全过
+  **修复打印确认对话框遮挡**（较高图片时「确认打印」按钮被挤出屏幕且无法滚动，issue #5）；
+  **图片抖动改蛇形扫描**（消除照片中间调的蠕虫纹/竖条纹，灰底更干净）；
+  设计稿见 `docs/ui-design/`（含 8 套新风格 HTML 预览与整页截图）；201 例测试全过
 - **v0.7.5（2026-09-01）**：**条码扩至 13 种 + 输入清洗/校验位重算**——条码从 QR + 7 种一维码
   扩到 zxing 可写全部 **13 种**（新增 Code93 / UPC-E / DataMatrix / Aztec / PDF-417）；条码输入清洗
   （EAN/UPC 仅留数字并核验 mod-10 校验位、ITF 奇数自动补前导 0、Code39/93 转大写、Codabar 去空白）
@@ -156,19 +158,20 @@
 
 ```bash
 cd android
-gradle runUnitTests       # 单元测试（协议/算法/界面/虚拟打印机端到端 + 性能基准，共 198 例）
+gradle runUnitTests       # 单元测试（协议/算法/界面/虚拟打印机端到端 + 性能基准，共 201 例）
 gradle assembleRelease    # 正式签名 release（R8 已开，APK ~1.0MB）
 gradle assembleDebug      # 调试版（无 R8，~6.4MB）
 ```
 
-### 测试覆盖（2026-08-12 建立，**2026-09-01 全量 198 例**）
+### 测试覆盖（2026-08-12 建立，**2026-09-09 全量 201 例**）
 
-> 下列为分批补充的测试类（合计 198 例）；新增测试类后记得把类名加进 `app/build.gradle.kts` 的 `runUnitTests.args`。
+> 下列为分批补充的测试类（合计 201 例）；新增测试类后记得把类名加进 `app/build.gradle.kts` 的 `runUnitTests.args`。
 
 - **协议层**（QringProtocolTest，15 例）：状态位解析、开盖/缺纸提示优先级、指令字节序、走纸/光栅头拆分
-- **算法层**（DitherTest / CannyTest，13 例）：抖动密度统计、阈值语义、边缘检测边界
-- **界面层**（MainActivityUiTest，19 例，Robolectric）：启动三 Tab 与五功能块、图标文件断言、
-  文字预览生成、排版 Dialog 加元素、渲染、模板存取、我的页入口、图片页参数记忆/高级折叠、
+- **算法层**（DitherTest / CannyTest，15 例）：抖动密度统计、阈值语义、**蛇形扫描奇偶行方向交替（金标准用例）**、边缘检测边界
+- **界面层**（MainActivityUiTest，20 例，Robolectric）：启动三 Tab 与五功能块、图标文件断言、
+  文字预览生成、**打印确认对话框内容可滚动（issue #5 防回归）**、排版 Dialog 加元素、渲染、
+  模板存取、我的页入口、图片页参数记忆/高级折叠、
   画布涂鸦笔画、系统模板 JSON 注册表、我的模板宫格（缩略图/点击进画布/无模板引导）、
   首页与打印页分工
 - **虚拟打印机引擎**（FakePrinterTest，21 例）：协议应答仿真器的字节流状态机——
@@ -180,7 +183,7 @@ gradle assembleDebug      # 调试版（无 R8，~6.4MB）
   BLE/SPP/Fake 三通道共享同一份代码——**实物联调只剩 GATT 写特征 + 热敏头物理
   两个未知量**
 - **性能基准**（ImagePipelineBenchTest，3 例，JVM 参考值见下节）
-- **后续新增**（v0.7.x 分批补充，合计 198 例）：图片增强/变换/裁剪（ImageEnhancerTest / ImageTransformTest）、
+- **后续新增**（v0.7.x 分批补充，合计 201 例）：图片增强/变换/裁剪（ImageEnhancerTest / ImageTransformTest）、
   Markdown 打印（MarkdownParserTest / MarkdownRendererTest）、PPT 导入与 Word 公式排版（MathLayoutTest）、
   批量打印（CsvTableParserTest / XlsxTableExtractorTest / BatchTemplateTest）、函数图像
   （ExpressionEvaluatorTest / FunctionGraphTest）、OTA 更新说明（ReleaseNotesTest）、
@@ -252,11 +255,11 @@ BLE 传输：1M 像素光栅 ≈ 125KB 数据，按 32B/包 × 80ms 节奏传输
 │       ├── DebugActivity.kt          # 调试台（收发 hex 日志/原始命令）
 │       ├── Design.kt                 # 8 套主题设计系统（含线性图标）
 │       └── MainActivity.kt           # 三 Tab 主界面
-│   └── app/src/test/java/com/qring/print/  # 198 例测试
+│   └── app/src/test/java/com/qring/print/  # 201 例测试
 │       ├── QringProtocolTest.kt      # 协议字节/状态位/指令构造（15 例）
-│       ├── DitherTest.kt / CannyTest.kt  # 抖动/边缘检测算法（13 例）
+│       ├── DitherTest.kt / CannyTest.kt  # 抖动/边缘检测算法（15 例）
 │       ├── TemplateBuilderTest.kt / HistoryStoreTest.kt / SettingsTest.kt
-│       ├── MainActivityUiTest.kt     # Robolectric 界面测试（19 例）
+│       ├── MainActivityUiTest.kt     # Robolectric 界面测试（20 例）
 │       ├── FakePrinterTest.kt        # 虚拟打印机协议引擎（21 例）
 │       ├── FakePrinterE2ETest.kt     # 端到端链路（15 例）
 │       └── ImagePipelineBenchTest.kt # 图像管线性能基准（3 例）

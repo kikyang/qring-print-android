@@ -55,21 +55,32 @@ object Dither {
         for (i in 0 until total) buffer[i] = gray.data[i].toFloat()
 
         for (y in 0 until height) {
-            for (x in 0 until width) {
+            // 蛇形扫描（2026-09-09，吸收上游 lztttt v1.6.0）：偶数行左→右，奇数行右→左。
+            // 单向扫描时每行的量化误差总是朝同一侧堆积，照片中间调会出现蠕虫纹/竖条纹；
+            // 交替方向让误差在左右两侧交替抵消，灰底更干净（输出仍保持总体墨量密度）。
+            val ltr = y % 2 == 0
+            val step = if (ltr) 1 else -1
+            var x = if (ltr) 0 else width - 1
+            while (x in 0 until width) {
                 val index = y * width + x
                 val oldValue = buffer[index]
                 val newValue = if (oldValue < PIVOT) 0f else 255f
                 out[index] = if (newValue == 0f) 1 else 0
                 val error = oldValue - newValue
 
+                // 主方向（当前扫描方向）上的相邻像素；反方向时整组权重镜像
+                val next1 = x + step
+                val next2 = x + 2 * step
+
                 if (mode == DitherMode.FLOYD_STEINBERG) {
-                    //        X   7/16
-                    //  3/16 5/16 1/16
-                    if (x + 1 < width) buffer[index + 1] += error * 7 / 16
+                    // 左→右：        X   7/16
+                    //           3/16 5/16 1/16
+                    // 右→左时整组权重镜像（7/16 朝左，3/16 落到右下方）
+                    if (next1 in 0 until width) buffer[index + step] += error * 7 / 16
                     if (y + 1 < height) {
-                        if (x > 0) buffer[index + width - 1] += error * 3 / 16
+                        if (x - step in 0 until width) buffer[index + width - step] += error * 3 / 16
                         buffer[index + width] += error * 5 / 16
-                        if (x + 1 < width) buffer[index + width + 1] += error * 1 / 16
+                        if (next1 in 0 until width) buffer[index + width + step] += error * 1 / 16
                     }
                 } else {
                     //       X   1/8  1/8
@@ -77,17 +88,18 @@ object Dither {
                     //       1/8
                     // 只扩散 6/8，剩下 2/8 丢弃 —— 这正是 Atkinson 对比度更高的原因
                     val share = error / 8
-                    if (x + 1 < width) buffer[index + 1] += share
-                    if (x + 2 < width) buffer[index + 2] += share
+                    if (next1 in 0 until width) buffer[index + step] += share
+                    if (next2 in 0 until width) buffer[index + 2 * step] += share
                     if (y + 1 < height) {
-                        if (x > 0) buffer[index + width - 1] += share
+                        if (x - step in 0 until width) buffer[index + width - step] += share
                         buffer[index + width] += share
-                        if (x + 1 < width) buffer[index + width + 1] += share
+                        if (next1 in 0 until width) buffer[index + width + step] += share
                     }
                     if (y + 2 < height) {
                         buffer[index + 2 * width] += share
                     }
                 }
+                x += step
             }
         }
         return out

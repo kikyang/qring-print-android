@@ -86,6 +86,31 @@ class DitherTest {
         val atk = countBlack(Dither.toBinary(g, DitherMode.ATKINSON, 128))
         assertTrue("floyd=$floyd atk=$atk", floyd >= atk)
     }
+
+    // ── 蛇形扫描（2026-09-09 吸收上游 lztttt v1.6.0）──────────────────
+
+    @Test
+    fun `蛇形扫描奇偶行方向交替`() {
+        // 手工推演金标准（PIVOT=128，FS 权重 7/16、3/16、5/16、1/16）：
+        // 输入 3x2：行0=[0,128,255]，行1=[128,128,128]
+        // 行0（左→右）：0→黑(err 0)；128→白(err -127，向右 7/16、向下 -3/16/-5/16/-1/16)；
+        //               199.4375→白(err -55.5625)
+        //   → 行1 缓冲 = [104.1875, 77.8945, 102.6997]
+        // 行1（蛇形→右→左）：102.6997→黑；77.8945+44.93=122.8256→黑；104.1875+53.74=157.92→白
+        //   → [0,1,1]；若行1 仍左→右（旧单向实现）会得到 [1,1,0] —— 本用例即区分两种实现。
+        val g = GrayImage(intArrayOf(0, 128, 255, 128, 128, 128), 3, 2)
+        val out = Dither.toBinary(g, DitherMode.FLOYD_STEINBERG, 128)
+        assertArrayEquals(byteArrayOf(1, 0, 0, 0, 1, 1), out)
+    }
+
+    @Test
+    fun `蛇形扫描保持墨量密度`() {
+        // 行方向交替不改变总体墨量：均匀 128 灰仍应接近 50%
+        val floyd = countBlack(Dither.toBinary(gray(64, 64, 128), DitherMode.FLOYD_STEINBERG, 128))
+        assertTrue("floyd 黑像素比例 ${floyd.toDouble() / 4096}", floyd in 1700..2400)
+        val atk = countBlack(Dither.toBinary(gray(64, 64, 128), DitherMode.ATKINSON, 128))
+        assertTrue("atkinson 黑像素比例 ${atk.toDouble() / 4096}", atk in 1500..2400)
+    }
 }
 
 private fun assertArrayEquals(expected: ByteArray, actual: ByteArray) {

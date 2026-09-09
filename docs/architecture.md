@@ -2,7 +2,7 @@
 
 > 给人类看的架构文档：不解释每一行代码，而是讲清楚"这套系统是怎么拼起来的、每个部件为什么存在"。
 > 读完本文你应该能回答：一条错题从手机屏幕到热敏纸，中间经历了什么？
-> 最近同步：v0.7.6（2026-09-05）。
+> 最近同步：v0.7.6（2026-09-09）。
 
 ---
 
@@ -105,7 +105,7 @@ PrinterConnection（接口）
   → [可选] 消除笔（把红笔/蓝笔批改痕迹替换成白色）
   → 等比缩放到 384 点宽
   → [可选] 一键增强（直方图拉伸去灰雾 + Sauvola 自适应二值化，拍试卷神器）
-  → [可选] 抖动（Floyd-Steinberg / Atkinson，让照片有层次而不是一片黑）
+  → [可选] 抖动（Floyd-Steinberg / Atkinson，**蛇形扫描**：偶数行左→右、奇数行右→左，避免误差单向堆积出蠕虫纹）
   → 二值化阈值可调（黑白化阶段调"哪些算黑"，与打印浓度"黑得多黑"独立叠加）
   → 二值化：每行 48 字节，MSB first，置 1 = 黑
   → ★ 行合并减半（每 2 行 OR 合并成 1 行）
@@ -172,6 +172,8 @@ STOP（复位）→ ENABLE（使能）→ 浓度 → 唤醒 → ESC@（解析器
 这些"模板"与普通打印没有本质区别：**先在内存里摆好一张 384 点宽的位图，再走统一打印流**。
 v0.7.4 起所有打印路径（文字/图片/条码/文档/模板/批量）最终汇聚到**统一准备打印页 + 统一打印确认条**
 （份数 / 打印浓度 / 前后走纸），保证"先预览、确认再打、走纸一致"。
+v0.7.6 起确认对话框把「预览图 + 确认条」放进 ScrollView，且预览图高度按屏幕可用高度自适应
+（issue #5：较高图片曾把「确认打印」按钮挤出屏幕且无法滚动）。
 
 批量打印与函数图像是 v0.7.4 新增的**两条内容生成管线**（各自独立、纯 Kotlin 可单测）：
 
@@ -207,7 +209,7 @@ v0.7.4 起所有打印路径（文字/图片/条码/文档/模板/批量）最�
 | 文档解析竞态防护 | 新任务取消旧协程（大文件晚完成会覆盖新结果），CancellationException 不吞 |
 | BLE 分包 + 节奏控制 | 96B/包 + 40ms 间隔，防丢包；SPP 1024B/块 + 1ms |
 | 三通道共享打印时序 | PrintJobRunner 统一编排，BLE/SPP/FakePrinter 三通道跑同一份代码——实物联调只剩 GATT 写 + 热敏头物理两个未知量 |
-| **自动化测试（198 例）** | `gradle runUnitTests`：协议（15）/算法（13）/模板·历史·设置（13）/Robolectric 界面（19）/虚拟打印机引擎（21）/端到端（15）/性能基准（3）；其余为 v0.7.x 分批补充——图片增强·变换·裁剪、Markdown、PPT/公式排版、批量打印（CSV/XLSX/模板）、函数图像、OTA 更新说明、条码 13 种与校验/清洗。注意：Gradle Test worker 在中文路径下 classpath 失效，用 JavaExec 任务绕开（见 README） |
+| **自动化测试（201 例）** | `gradle runUnitTests`：协议（15）/算法（15）/模板·历史·设置（13）/Robolectric 界面（20）/虚拟打印机引擎（21）/端到端（15）/性能基准（3）；其余为 v0.7.x 分批补充——图片增强·变换·裁剪、Markdown、PPT/公式排版、批量打印（CSV/XLSX/模板）、函数图像、OTA 更新说明、条码 13 种与校验/清洗、**抖动蛇形扫描金标准 + 确认对话框可滚动（issue #5 防回归）**。注意：Gradle Test worker 在中文路径下 classpath 失效，用 JavaExec 任务绕开（见 README） |
 | **R8 瘦身** | release 开 minify（AGP 8.5.2），APK 6.4MB → 0.87MB（v0.7.2）→ ~1.0MB（v0.7.5，新增条码码制/批量/函数图后略增）；zxing 自带 consumer rules，mapping 验证功能类全保留 |
 
 ### 6.1 OTA 检查更新（v0.5.2 起）
@@ -279,11 +281,11 @@ android/app/src/main/java/com/qring/print/
 ├── FakePrinterConnection.kt  # 虚拟打印机连接（PrinterConnection 实现，测试注入）
 └── MainActivity.kt           # 主界面：三 Tab（首页/打印/我的）+ 全部交互
 
-test/ 目录（198 例，`gradle runUnitTests`）：
+test/ 目录（201 例，`gradle runUnitTests`）：
 ├── QringProtocolTest.kt      # 协议字节/状态位/指令构造（15 例）
-├── DitherTest.kt / CannyTest.kt  # 抖动/边缘检测算法（13 例）
+├── DitherTest.kt / CannyTest.kt  # 抖动/边缘检测算法（15 例，含蛇形扫描金标准）
 ├── TemplateBuilderTest.kt / HistoryStoreTest.kt / SettingsTest.kt  # 模板/历史/设置（13 例）
-├── MainActivityUiTest.kt     # Robolectric 界面测试（19 例：启动/图标/预览/排版/模板/参数记忆/画布/宫格/分工）
+├── MainActivityUiTest.kt     # Robolectric 界面测试（20 例：启动/图标/预览/排版/模板/参数记忆/画布/宫格/分工/确认对话框可滚动）
 ├── FakePrinterTest.kt        # 虚拟打印机协议引擎（21 例）
 ├── FakePrinterE2ETest.kt     # 端到端链路（15 例）
 ├── ImagePipelineBenchTest.kt # 图像管线性能基准（3 例）

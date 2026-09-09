@@ -3202,11 +3202,18 @@ class MainActivity : Activity() {
      */
     private fun previewConfirmDialog(title: String, previewBmp: Bitmap, onConfirm: (copies: Int) -> Unit) {
         var copies = 1
+        // issue #5（2026-09-01 用户报告）：预览图较高时「确认条 + 确认打印按钮」被挤出屏幕，
+        // 且 AlertDialog 的自定义视图不可滚动 → 打印按钮点不到。双重保险：
+        // ① 预览图高度按屏幕可用高度自适应（为标题/说明/确认条/按钮预留空间）；
+        // ② 内容整体放进 ScrollView，极端情况下也能滚动看到确认条。
+        val screenHeight = resources.displayMetrics.heightPixels
+        val reserved = Design.dp(320)   // 标题 + 说明 + 确认条（约 150dp）+ 按钮行 + 边距
+        val previewMaxHeight = minOf(Design.dp(440), (screenHeight - reserved).coerceAtLeast(Design.dp(160)))
         val img = ImageView(this).apply {
             setImageBitmap(previewBmp)
             scaleType = ImageView.ScaleType.FIT_CENTER
             adjustViewBounds = true
-            maxHeight = Design.dp(440)
+            maxHeight = previewMaxHeight
             setPadding(Design.dp(12), Design.dp(8), Design.dp(12), Design.dp(8))
         }
         // 浓度（淡/中/浓 → Settings.thickness，全局生效）
@@ -3264,12 +3271,17 @@ class MainActivity : Activity() {
             })
             addView(copiesRow)
         }
-        val container = LinearLayout(this).apply {
+        val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             addView(img)
             addView(bar, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
                 topMargin = Design.dp(2)
             })
+        }
+        // 可滚动容器：预览图自适应后通常无需滚动；超长内容（如长图/长文）仍可滚动到底部确认条
+        val container = ScrollView(this).apply {
+            isFillViewport = false
+            addView(content, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         }
         val dialog = AlertDialog.Builder(this)
             .setTitle(title)
