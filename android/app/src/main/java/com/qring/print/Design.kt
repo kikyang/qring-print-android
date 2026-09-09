@@ -13,24 +13,25 @@ import android.widget.RadioButton
 import android.widget.RadioGroup
 import android.widget.TextView
 
-/** 界面主题（2026-08-18 加）：微信风 / xyprt 简洁风 / 仿喵喵机蓝白风 */
+/** 界面主题（v0.7.6 起）：8 套差异化风格（旧微信风/简洁风/蓝白风已移除） */
 enum class UiTheme(val label: String) {
-    WECHAT("微信风"),
-    XYPRT("简洁风"),
-    MIAOMIAO("蓝白风"),
+    QRING("紫罗兰"),
+    PAPER("墨绿纸感"),
+    LINEARDARK("暗色效能"),
+    NOTEBOOK("手账纸感"),
+    THERMAL("热敏黑白"),
+    CLAY("奶油多彩"),
+    APPLE("Apple Bento"),
+    GLASS("玻璃拟态"),
 }
 
 /**
- * 设计系统 —— 微信小程序风格（2026-08-11 用户选定，替换原 M3 学习绿）。
+ * 设计系统 —— v0.7.6 共 8 套差异化主题。
  *
- * 微信风核心：
- * - **灰底白卡**：页面背景 #F7F7F7，卡片纯白 #FFFFFF 圆角 8px，卡间靠间距分层（无阴影）
- * - **微信绿主色** #07C160：按钮/选中态/强调
- * - **文字层级**：主 #191919 / 次 #888888 / 辅助 #B2B2B2
- * - **分隔线** #EBEDF0
- * - 按钮为 8px 圆角（非胶囊）；输入框浅灰底无描边
- * - 深色模式：微信深色风（#111111 底 / #1E1E1E 卡）
- * 纯代码实现，API 兼容旧调用点。
+ * 代码骨架保留早期「微信小程序风格」的纯代码实现方式：
+ * 灰底白卡、圆角分级、按钮/分段控件、线性图标；每套主题通过
+ * Palette + RADIUS_SM + buttonRadius + sectionTitle/header 差异化。
+ * 旧微信风 / xyprt 简洁风 / 喵喵机蓝白风 已从 UiTheme 移除。
  */
 object Design {
 
@@ -40,9 +41,9 @@ object Design {
 
     /** 界面主题（2026-08-18 加）：设置页可切换 */
     @Volatile
-    var theme: UiTheme = UiTheme.WECHAT
+    var theme: UiTheme = UiTheme.PAPER
 
-    // ── 主题 Color Scheme（2026-08-18 加：微信风 / xyprt 简洁风 / 仿喵喵机蓝白风）──
+    // ── 主题 Color Scheme（v0.7.6：8 套）──
     private data class Palette(
         val primary: Int, val primaryDeep: Int, val primaryContainer: Int,
         val onPrimaryContainer: Int, val secondaryContainer: Int, val onSecondaryContainer: Int,
@@ -52,34 +53,74 @@ object Design {
 
     private val pal: Palette
         get() = when (theme) {
-            // 忠实还原上游 soulxyz/xyprt_android "Paper + ink + calm teal"（Color.kt 精确值）
-            UiTheme.XYPRT -> if (isDark) Palette(
+            // 2026-09-05 v0.7.6：8 套差异化主题（旧微信风/简洁风/蓝白风已移除）
+            UiTheme.QRING -> if (isDark) Palette(
+                0xFF9F8CFF.toInt(), 0xFF7B5CE7.toInt(), 0xFF2F2458.toInt(), 0xFFD0C2FF.toInt(),
+                0xFF33313D.toInt(), 0xFFE5E5E5.toInt(), 0xFF14121B.toInt(), 0xFF1C1A26.toInt(),
+                0xFF24222E.toInt(), 0xFFEDEBF4.toInt(), 0xFFA49EB2.toInt(), 0xFF4A4657.toInt(), 0xFF353241.toInt(),
+            ) else Palette(
+                0xFF6C5CE7.toInt(), 0xFF5A48D9.toInt(), 0xFFEEEBFF.toInt(), 0xFF340D9B.toInt(),
+                0xFFF0EEF8.toInt(), 0xFF6A677B.toInt(), 0xFFF4F4FA.toInt(), 0xFFFFFFFF.toInt(),
+                0xFFECEAF7.toInt(), 0xFF17151F.toInt(), 0xFF8B8A97.toInt(), 0xFFD9D6EC.toInt(), 0xFFECEBF4.toInt(),
+            )
+            UiTheme.PAPER -> if (isDark) Palette(
                 0xFF8BD5C2.toInt(), 0xFF5FB89F.toInt(), 0xFF0E5144.toInt(), 0xFFB2F1DF.toInt(),
                 0xFF354A43.toInt(), 0xFFD2E8E0.toInt(), 0xFF111412.toInt(), 0xFF171A18.toInt(),
                 0xFF1C201D.toInt(), 0xFFE6EAE7.toInt(), 0xFFBCC4BE.toInt(), 0xFF89918C.toInt(), 0xFF404742.toInt(),
             ) else Palette(
                 0xFF176B5B.toInt(), 0xFF0E4F42.toInt(), 0xFFD6EFE7.toInt(), 0xFF08261F.toInt(),
-                0xFFDDEAE5.toInt(), 0xFF152823.toInt(), 0xFFFAFAF7.toInt(), 0xFFFFFFFF.toInt(),
-                0xFFF3F5F1.toInt(), 0xFF1B1D1C.toInt(), 0xFF5D625F.toInt(), 0xFFBEC6C0.toInt(), 0xFFDDE3DE.toInt(),
+                0xFFEDF2EE.toInt(), 0xFF48605A.toInt(), 0xFFF7F8F4.toInt(), 0xFFFFFFFF.toInt(),
+                0xFFEDF1EC.toInt(), 0xFF1B1D1C.toInt(), 0xFF6B716E.toInt(), 0xFFDDE3DE.toInt(), 0xFFE7EDE8.toInt(),
             )
-            UiTheme.MIAOMIAO -> if (isDark) Palette(
-                0xFF6FA8E8.toInt(), 0xFF5F9ADF.toInt(), 0xFF233A55.toInt(), 0xFFA8CCF5.toInt(),
-                0xFF262626.toInt(), 0xFFE5E5E5.toInt(), 0xFF10151C.toInt(), 0xFF1A212B.toInt(),
-                0xFF242D39.toInt(), 0xFFE5E5E5.toInt(), 0xFF9A9A9A.toInt(), 0xFF3A4655.toInt(), 0xFF2A3440.toInt(),
-            ) else Palette(
-                // 清新蓝白：淡蓝纸底 + 纯白卡 + 喵喵机蓝（恢复初始版 M3 精致感）
-                0xFF4A90D9.toInt(), 0xFF3D7FC7.toInt(), 0xFFDCEBFB.toInt(), 0xFF2E6FA8.toInt(),
-                0xFFEDF3FA.toInt(), 0xFF20303F.toInt(), 0xFFF5F9FF.toInt(), 0xFFFFFFFF.toInt(),
-                0xFFEAF2FA.toInt(), 0xFF1A2530.toInt(), 0xFF7C8FA3.toInt(), 0xFFC7D8E8.toInt(), 0xFFE3EDF6.toInt(),
+            UiTheme.LINEARDARK -> Palette(
+                0xFF55B3FF.toInt(), 0xFF3D8FDE.toInt(), 0xFF1B241F.toInt(), 0xFF9AD1FF.toInt(),
+                0xFF1B1C1E.toInt(), 0xFFD6D6D8.toInt(), 0xFF07080A.toInt(), 0xFF101111.toInt(),
+                0xFF16181B.toInt(), 0xFFF9F9F9.toInt(), 0xFF9C9C9D.toInt(), 0xFFFFFFFF.toInt(), 0x40252529.toInt(),
             )
-            else -> if (isDark) Palette(
-                0xFF07C160.toInt(), 0xFF06AD56.toInt(), 0xFF1F3D2C.toInt(), 0xFF8BE8B4.toInt(),
-                0xFF262626.toInt(), 0xFFE5E5E5.toInt(), 0xFF111111.toInt(), 0xFF1E1E1E.toInt(),
-                0xFF2A2A2A.toInt(), 0xFFE5E5E5.toInt(), 0xFF9A9A9A.toInt(), 0xFF3A3A3A.toInt(), 0xFF2A2A2A.toInt(),
+            UiTheme.NOTEBOOK -> if (isDark) Palette(
+                0xFFE07A62.toInt(), 0xFFC7442F.toInt(), 0xFF4A2A20.toInt(), 0xFFFFD7CD.toInt(),
+                0xFF3A3025.toInt(), 0xFFD9C9B0.toInt(), 0xFF2B2118.toInt(), 0xFF382D20.toInt(),
+                0xFF42372A.toInt(), 0xFFF3E9DC.toInt(), 0xFFB9A98E.toInt(), 0xFF6B5A45.toInt(), 0xFF57483A.toInt(),
             ) else Palette(
-                0xFF07C160.toInt(), 0xFF06AD56.toInt(), 0xFFE8F8EE.toInt(), 0xFF07C160.toInt(),
-                0xFFF2F3F5.toInt(), 0xFF191919.toInt(), 0xFFF7F7F7.toInt(), 0xFFFFFFFF.toInt(),
-                0xFFF2F3F5.toInt(), 0xFF191919.toInt(), 0xFF888888.toInt(), 0xFFDADADA.toInt(), 0xFFEBEDF0.toInt(),
+                0xFFD95B43.toInt(), 0xFFC7442F.toInt(), 0xFFFBE4DE.toInt(), 0xFF7A2614.toInt(),
+                0xFFE6F1FA.toInt(), 0xFF3F7EBB.toInt(), 0xFFFBF7EE.toInt(), 0xFFFFFEF9.toInt(),
+                0xFFF4EBDC.toInt(), 0xFF3A3428.toInt(), 0xFF938A77.toInt(), 0xFFE5DBC7.toInt(), 0xFFE9DFCB.toInt(),
+            )
+            UiTheme.THERMAL -> if (isDark) Palette(
+                0xFFE8E8E0.toInt(), 0xFFFFFFFF.toInt(), 0xFF2A2A2A.toInt(), 0xFFEEEEEE.toInt(),
+                0xFF333333.toInt(), 0xFFE5E5E5.toInt(), 0xFF1A1A1A.toInt(), 0xFF252525.toInt(),
+                0xFF2E2E2E.toInt(), 0xFFF2F2F2.toInt(), 0xFF9A9A9A.toInt(), 0xFF4A4A4A.toInt(), 0xFF333333.toInt(),
+            ) else Palette(
+                0xFF111111.toInt(), 0xFF000000.toInt(), 0xFFEDEDE8.toInt(), 0xFF222222.toInt(),
+                0xFFF1F1EB.toInt(), 0xFF222222.toInt(), 0xFFF4F4F0.toInt(), 0xFFFFFFFF.toInt(),
+                0xFFECECE6.toInt(), 0xFF111111.toInt(), 0xFF777770.toInt(), 0xFFAEAEA5.toInt(), 0xFFE3E3DA.toInt(),
+            )
+            UiTheme.CLAY -> if (isDark) Palette(
+                0xFFB7A0FF.toInt(), 0xFF9A82F0.toInt(), 0xFF31245A.toInt(), 0xFFD7CCFF.toInt(),
+                0xFF3A3025.toInt(), 0xFFD9C9B0.toInt(), 0xFF201A16.toInt(), 0xFF2B241E.toInt(),
+                0xFF352E27.toInt(), 0xFFF3EDE4.toInt(), 0xFFBBAE9E.toInt(), 0xFF6B5A45.toInt(), 0xFF57483A.toInt(),
+            ) else Palette(
+                0xFF43089F.toInt(), 0xFF32037D.toInt(), 0xFFEEE9FC.toInt(), 0xFF32037D.toInt(),
+                0xFFF3F0EA.toInt(), 0xFF6B655B.toInt(), 0xFFFAF9F7.toInt(), 0xFFFFFFFF.toInt(),
+                0xFFF1EEE6.toInt(), 0xFF111111.toInt(), 0xFF9F9B93.toInt(), 0xFFDAD4C8.toInt(), 0xFFEEE9DF.toInt(),
+            )
+            UiTheme.APPLE -> if (isDark) Palette(
+                0xFF2997FF.toInt(), 0xFF0071E3.toInt(), 0xFF1A2A3A.toInt(), 0xFFA2D5FF.toInt(),
+                0xFF2A2A2D.toInt(), 0xFFE5E5E5.toInt(), 0xFF000000.toInt(), 0xFF1D1D1F.toInt(),
+                0xFF272729.toInt(), 0xFFF5F5F7.toInt(), 0xFF98989D.toInt(), 0xFF3A3A3C.toInt(), 0xFF272729.toInt(),
+            ) else Palette(
+                0xFF0071E3.toInt(), 0xFF0066CC.toInt(), 0xFFEAF3FE.toInt(), 0xFF0A4C93.toInt(),
+                0xFFEDEDF0.toInt(), 0xFF3A3A3C.toInt(), 0xFFF5F5F7.toInt(), 0xFFFFFFFF.toInt(),
+                0xFFEDEDF0.toInt(), 0xFF1D1D1F.toInt(), 0xFF6E6E73.toInt(), 0xFFD2D2D7.toInt(), 0xFFE8E8ED.toInt(),
+            )
+            UiTheme.GLASS -> if (isDark) Palette(
+                0xFF6FA8FF.toInt(), 0xFF4D8AE5.toInt(), 0xFF22334D.toInt(), 0xFFB4D4FF.toInt(),
+                0xFF2A3440.toInt(), 0xFFE5E5E5.toInt(), 0xFF10151C.toInt(), 0xAA242D39.toInt(),
+                0xAA1A212B.toInt(), 0xFFF1F4F9.toInt(), 0xFF9AA8BC.toInt(), 0xFF3A4655.toInt(), 0xFF2A3440.toInt(),
+            ) else Palette(
+                0xFF2E6FF2.toInt(), 0xFF2458CC.toInt(), 0x33FFFFFF.toInt(), 0xFF14213D.toInt(),
+                0x33FFFFFF.toInt(), 0xFF3E4D69.toInt(), 0xFFE8F1FF.toInt(), 0x99FFFFFF.toInt(),
+                0x66FFFFFF.toInt(), 0xFF14213D.toInt(), 0xFF61708B.toInt(), 0x6699B0D0.toInt(), 0x33FFFFFF.toInt(),
             )
         }
 
@@ -107,13 +148,29 @@ object Design {
     val TEXT_SUB: Int get() = ON_SURFACE_VARIANT
     val DIVIDER: Int get() = OUTLINE_VARIANT
     val PRIMARY_LIGHT: Int get() = PRIMARY_CONTAINER
-    /** 小圆角：随主题变化——微信 8px / xyprt 12dp(M3 small) / 喵喵机 12dp tonal 卡 */
+    /** 小圆角：随主题变化 */
     val RADIUS_SM: Float
         get() = when (theme) {
-            UiTheme.XYPRT -> 12f
-            UiTheme.MIAOMIAO -> 12f
-            else -> 8f
+            UiTheme.QRING, UiTheme.PAPER -> 14f
+            UiTheme.LINEARDARK -> 10f
+            UiTheme.NOTEBOOK -> 12f
+            UiTheme.THERMAL -> 4f
+            UiTheme.CLAY -> 16f
+            UiTheme.APPLE -> 10f
+            UiTheme.GLASS -> 18f
         }
+
+    /** 主题选择器预览色（不依赖当前主题状态） */
+    fun themeAccent(t: UiTheme): Int = when (t) {
+        UiTheme.QRING -> 0xFF6C5CE7.toInt()
+        UiTheme.PAPER -> 0xFF176B5B.toInt()
+        UiTheme.LINEARDARK -> 0xFF55B3FF.toInt()
+        UiTheme.NOTEBOOK -> 0xFFD95B43.toInt()
+        UiTheme.THERMAL -> 0xFF111111.toInt()
+        UiTheme.CLAY -> 0xFF43089F.toInt()
+        UiTheme.APPLE -> 0xFF0071E3.toInt()
+        UiTheme.GLASS -> 0xFF2E6FF2.toInt()
+    }
 
     // ── Shape 刻度（随主题）──
     private val SHAPE_SMALL: Float get() = RADIUS_SM
@@ -154,54 +211,55 @@ object Design {
         setBackgroundColor(SURFACE)
     }
 
-    /** 顶部标题栏：微信/xyprt 导航栏风（中性底 + 墨黑字）；仿喵喵机 = 蓝白渐变大圆角 */
+    /** 顶部标题栏：默认中性底 + 墨黑字；玻璃拟态用渐变大圆角 */
     fun header(text: String): LinearLayout = LinearLayout(Utils.appContext()).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
         setPadding(dp(20), dp(16), dp(20), dp(16))
-        if (theme == UiTheme.MIAOMIAO) {
-            // 恢复初始版（09c171b）渐变标题栏，换蓝白
+        val gradHeader = theme == UiTheme.GLASS
+        if (gradHeader) {
+            val colors = if (isDark) intArrayOf(0xFF22334D.toInt(), 0xFF2E6FF2.toInt())
+                else intArrayOf(0xFF6FA8FF.toInt(), 0xFFA9D3FF.toInt())
             background = GradientDrawable(
                 GradientDrawable.Orientation.LEFT_RIGHT,
-                if (isDark) intArrayOf(0xFF1B3A5C.toInt(), 0xFF2E6FA8.toInt())
-                else intArrayOf(0xFF4A90D9.toInt(), 0xFF6FB1E8.toInt())
+                colors
             ).apply { cornerRadius = SHAPE_LARGE }
         } else {
             setBackgroundColor(SURFACE_CONTAINER_LOW)
         }
         addView(TextView(Utils.appContext()).apply {
             this.text = text
-            textSize = if (theme == UiTheme.MIAOMIAO) 20f else 18f
-            setTextColor(if (theme == UiTheme.MIAOMIAO && !isDark) 0xFFFFFFFF.toInt() else ON_SURFACE)
+            textSize = if (gradHeader) 20f else 18f
+            setTextColor(if (gradHeader && !isDark) 0xFFFFFFFF.toInt() else ON_SURFACE)
             typeface = Typeface.DEFAULT_BOLD
         })
     }
 
     /**
-     * 卡片：微信风纯白卡 + 8px 圆角（深浅模式自动跟随），无阴影无描边，
-     * 卡间分层靠页面灰底 + 外边距。
+     * 卡片：浅色卡 + 随主题圆角；部分风格带柔和投影，卡间分层靠外边距。
      */
     fun card(): LinearLayout = LinearLayout(Utils.appContext()).apply {
         orientation = LinearLayout.VERTICAL
         setPadding(dp(16), dp(16), dp(16), dp(16))
         background = rounded(SURFACE_CONTAINER_LOW, SHAPE_SMALL)
+        // 2026-09-05 v0.7.6：部分风格用柔和投影提升卡片层次
+        if (theme in setOf(UiTheme.QRING, UiTheme.PAPER, UiTheme.NOTEBOOK, UiTheme.CLAY, UiTheme.APPLE, UiTheme.GLASS)) {
+            elevation = dp(2).toFloat()
+        }
     }
 
     fun card(container: (LinearLayout.() -> Unit)): LinearLayout = card().also { it.container() }
 
     // ── 文字（微信层级：标题粗黑 / 正文深灰 / 辅助浅灰）──
-    /** 小节标题：微信"标题"样式（纯文字粗体）；仿喵喵机 = primary-container 胶囊标签（恢复初始版） */
+    /** 小节标题：纯文字粗体；热敏黑白加“▸”前缀并用等宽字体 */
     fun sectionTitle(text: String): TextView = TextView(Utils.appContext()).apply {
-        this.text = text
-        textSize = if (theme == UiTheme.MIAOMIAO) 15f else 16f
-        setTextColor(if (theme == UiTheme.MIAOMIAO) ON_PRIMARY_CONTAINER else ON_SURFACE)
-        typeface = Typeface.DEFAULT_BOLD
-        if (theme == UiTheme.MIAOMIAO) {
-            setPadding(dp(12), dp(6), dp(12), dp(6))
-            // 胶囊标签垂直居中（只关字体内边距，保持左对齐）
-            includeFontPadding = false
-            background = rounded(PRIMARY_CONTAINER, SHAPE_MEDIUM)
-        }
+        this.text = if (theme == UiTheme.THERMAL) "▸ $text" else text
+        textSize = if (theme == UiTheme.GLASS) 15f else 16f
+        setTextColor(when (theme) {
+            UiTheme.NOTEBOOK, UiTheme.CLAY -> PRIMARY
+            else -> ON_SURFACE
+        })
+        typeface = if (theme == UiTheme.THERMAL) Typeface.MONOSPACE else Typeface.DEFAULT_BOLD
     }
 
     fun caption(text: String): TextView = TextView(Utils.appContext()).apply {
@@ -218,11 +276,10 @@ object Design {
         setPadding(0, dp(8), 0, dp(4))
     }
 
-    // ── 按钮（微信风：8px 圆角方按钮，非胶囊）──
+    // ── 按钮（圆角随主题）──
     private fun buttonRadius(): Float = when (theme) {
-        UiTheme.MIAOMIAO -> SHAPE_FULL
-        UiTheme.XYPRT -> SHAPE_FULL   // 上游 M3 FilledButton 默认胶囊
-        else -> SHAPE_SMALL
+        UiTheme.QRING, UiTheme.PAPER, UiTheme.NOTEBOOK, UiTheme.CLAY, UiTheme.GLASS -> SHAPE_FULL
+        UiTheme.LINEARDARK, UiTheme.THERMAL, UiTheme.APPLE -> SHAPE_SMALL
     }
 
     /** 主按钮：主题化圆角（微信方 / xyprt 小圆角 / 喵喵机胶囊） */
@@ -316,7 +373,7 @@ object Design {
             check(if (defaultIndex < items.size) getChildAt(defaultIndex).id else getChildAt(0).id)
         }
 
-    // ── 输入框（微信风：浅灰底无描边 + 8px 圆角）──
+    // ── 输入框（浅灰底无描边 + 随主题圆角）──
     fun input(hint: String, lines: Int = 1): EditText = EditText(Utils.appContext()).apply {
         this.hint = hint
         setHintTextColor(OUTLINE)
@@ -338,7 +395,7 @@ object Design {
         setTextColor(ON_SURFACE)
     }
 
-    // ── 微信风线性图标（assets/icons/，2026-08-11 全量重制）──
+    // ── 线性图标（assets/icons/，2026-08-11 全量重制）──
     object Icons {
         private val bitmapCache = HashMap<String, android.graphics.Bitmap?>()
 

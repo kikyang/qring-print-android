@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>风格 C · Linear/Raycast 暗色效能</title>
+<link rel="stylesheet" href="common.css">
+<style>
+  /* 风格 C：参考 Linear / Raycast 暗色精确工具，近黑蓝底 + 多层内阴影 + 蓝色交互 */
+  :root {
+    --bg: #07080A;
+    --card: #101111;
+    --text: #F9F9F9;
+    --muted: #9C9C9D;
+    --primary: #55B3FF;
+    --primary-soft: rgba(85,179,255,.15);
+    --primary-glow: rgba(85,179,255,.20);
+    --outline: rgba(255,255,255,.10);
+    --divider: rgba(255,255,255,.07);
+    --nav-bg: #0B0C0E;
+    --nav-border: 1px solid rgba(255,255,255,.07);
+    --seg-bg: #131416;
+    --preview-bg: #0A0B0D;
+    --preview-border: 1px solid rgba(255,255,255,.09);
+    --radius: 10px;
+    --radius-lg: 18px;
+    --radius-icon: 14px;
+    --radius-btn: 999px;
+    --card-shadow: 0 0 0 1px #1B1C1E, 0 0 0 1px #07080A inset, 0 14px 34px rgba(0,0,0,.35);
+    --card-border: 1px solid rgba(255,255,255,.06);
+    --btn-shadow: 0 1px 0 rgba(255,255,255,.12) inset, 0 12px 28px rgba(0,153,255,.16), 0 4px 10px rgba(0,0,0,.4);
+    --status-bg: #07080A;
+    --pill-bg: #1B1C1E;
+    --pill-text: #D6D6D8;
+    --card-text: #F9F9F9;
+  }
+  body {
+    background: #030304;
+    color: #eee;
+  }
+  .design-head p { color: #aaa; }
+  .design-head h1 { color: #fff; }
+  .design-head .eyebrow { color: #55B3FF; }
+  .chip { background: #141518; color: #ccc; box-shadow:none; border:1px solid rgba(255,255,255,.08); }
+  .swatch { background:#121315; box-shadow: none; border:1px solid rgba(255,255,255,.08); }
+  .swatch .name { color:#eee; }
+  .swatch .hex { color:#888; }
+  .spec-card { background:#0E0F11; color:#ddd; border:1px solid rgba(255,255,255,.08); box-shadow:none; }
+  .spec-card h3 { color:#fff; }
+  .spec-card ul { color:#aaa; }
+  .back-link { color:#aaa; }
+  .phone { border-color:#222; }
+  .mini-pill { --pill-bg:#1B1C1E; --pill-text:#D6D6D8; }
+</style>
+</head>
+<body>
+<div class="design-page">
+  <a class="back-link" href="index.html">← 返回方案总览</a>
+  <div class="design-head">
+    <div class="eyebrow">Style C</div>
+    <h1>Linear/Raycast 暗色 · 精准工具</h1>
+    <p>参考 <b>Linear 最新设计 Refresh</b> 与 <b>Raycast Design System</b>：近黑蓝底 #07080A，不用纯黑；卡片用“双重描边 + 内高光”模拟物理层次；蓝色做交互强调，红/黄/绿只做语义。整体像一把精密瑞士军刀，夜间使用友好。</p>
+    <div class="meta">
+      <span class="chip">灵感：Linear / Raycast / 暗色生产力工具</span>
+      <span class="chip">关键词：近黑 · 内高光 · 蓝色交互 · 精确</span>
+    </div>
+    <div class="palette-row">
+      <div class="swatch"><div class="color" style="background:#07080A"></div><div class="name">背景</div><div class="hex">#07080A</div></div>
+      <div class="swatch"><div class="color" style="background:#101111"></div><div class="name">卡片</div><div class="hex">#101111</div></div>
+      <div class="swatch"><div class="color" style="background:#55B3FF"></div><div class="name">交互蓝</div><div class="hex">#55B3FF</div></div>
+      <div class="swatch"><div class="color" style="background:#FF6363"></div><div class="name">警示红</div><div class="hex">#FF6363</div></div>
+      <div class="swatch"><div class="color" style="background:#5FC992"></div><div class="name">成功绿</div><div class="hex">#5FC992</div></div>
+      <div class="swatch"><div class="color" style="background:#FFBC33"></div><div class="name">提醒黄</div><div class="hex">#FFBC33</div></div>
+    </div>
+  </div>
+
+  <div class="phones">
+    <!-- 首页 -->
+    <div class="phone-wrap">
+      <div class="screen-title">首页 · 启动台</div>
+      <div class="screen-desc">深色状态卡 + 极简功能宫格</div>
+      <div class="phone">
+        <div class="screen">
+          <div class="statusbar"><span>23:05</span><span>5G</span></div>
+          <div class="content">
+            <div class="page-title">错题小印</div>
+            <div class="card device-card">
+              <div class="row">
+                <div class="device-icon" style="background:rgba(85,179,255,.15);color:#55B3FF">🖨</div>
+                <div class="grow">
+                  <h2>Qring_D6E9</h2>
+                  <div class="device-sub">已连接 · 电量 72%</div>
+                </div>
+                <div class="btn-subtle" style="color:#55B3FF;border-color:rgba(85,179,255,.3)">管理</div>
+              </div>
+              <div class="device-meta">
+                <span class="mini-pill">电量 72%</span>
+                <span class="mini-pill">纸张正常</span>
+                <span class="mini-pill">打印中</span>
+              </div>
+            </div>
+            <div class="section-label">快速打印</div>
+            <div class="grid-2">
+              <div class="quick" style="text-align:left;padding:14px">
+                <div class="icon" style="background:rgba(255,188,51,.14);color:#FFBC33;margin:0 0 10px">▧</div>
+                <b>图片打印</b><span>相册 / 拍照</span>
+              </div>
+              <div class="quick" style="text-align:left;padding:14px">
+                <div class="icon" style="background:rgba(95,201,146,.14);color:#5FC992;margin:0 0 10px">T</div>
+                <b>文字打印</b><span>TXT 文本</span>
+              </div>
+              <div class="quick" style="text-align:left;padding:14px">
+                <div class="icon" style="background:rgba(85,179,255,.14);color:#55B3FF;margin:0 0 10px">▦</div>
+                <b>条码打印</b><span>二维码 / 条码</span>
+              </div>
+              <div class="quick" style="text-align:left;padding:14px">
+                <div class="icon" style="background:rgba(255,99,99,.14);color:#FF6363;margin:0 0 10px">✦</div>
+                <b>自定义</b><span>画布 / 模板</span>
+              </div>
+            </div>
+            <div class="card">
+              <div class="row">
+                <div class="device-icon" style="background:rgba(85,179,255,.12);color:#55B3FF">↻</div>
+                <div class="grow">
+                  <div class="bold">打印历史</div>
+                  <div class="muted">最近 100 条 · 一键重打</div>
+                </div>
+                <div class="btn-subtle" style="color:#55B3FF;border-color:rgba(85,179,255,.3)">查看</div>
+              </div>
+            </div>
+          </div>
+          <div class="bottom-nav">
+            <div class="nav-item on"><span class="ni">⌂</span>首页</div>
+            <div class="nav-item"><span class="ni">▤</span>打印</div>
+            <div class="nav-item"><span class="ni">◇</span>我的</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 打印页 -->
+    <div class="phone-wrap">
+      <div class="screen-title">打印 · 图片工作台</div>
+      <div class="screen-desc">暗色预览 + 发光主按钮 + 分段控件</div>
+      <div class="phone">
+        <div class="screen">
+          <div class="statusbar"><span>23:05</span><span>5G</span></div>
+          <div class="content">
+            <div class="row">
+              <div class="page-title" style="padding:0;font-size:20px">图片打印</div>
+              <div class="grow"></div>
+              <button class="btn-primary" style="background:#18191A;color:#F9F9F9;box-shadow:0 1px 0 rgba(255,255,255,.18) inset">🖨 打印</button>
+            </div>
+            <div class="seg">
+              <span>文字</span><span class="on">图片</span><span>条码</span><span>文档</span><span>其它</span>
+            </div>
+            <div class="preview">
+              <span style="font-size:38px;opacity:.4">🖼</span>
+              <span style="margin-top:6px">选择图片后将显示预览</span>
+            </div>
+            <div class="card">
+              <div class="row" style="margin-bottom:8px">
+                <div class="device-icon" style="background:rgba(255,188,51,.14);color:#FFBC33">▧</div>
+                <div class="grow"><div class="bold">IMG_2026-09-05.jpg</div><div class="muted">Black &amp; White · 阈值 153</div></div>
+                <div class="btn-subtle" style="color:#55B3FF;border-color:rgba(85,179,255,.3)">更换</div>
+              </div>
+              <div class="func-tabs">
+                <span class="on">常用</span><span>效果</span><span>排版</span><span>更多</span>
+              </div>
+              <div class="grid-2" style="margin-top:5px">
+                <div class="btn-subtle text-center" style="color:#dcdcdc;border-color:rgba(255,255,255,.12)">✂ 裁剪</div>
+                <div class="btn-subtle text-center" style="color:#dcdcdc;border-color:rgba(255,255,255,.12)">🖌 画布</div>
+                <div class="btn-subtle text-center" style="color:#dcdcdc;border-color:rgba(255,255,255,.12)">☀ 增强</div>
+                <div class="btn-subtle text-center" style="color:#FF6363;border-color:rgba(255,99,99,.28)">✖ 清除</div>
+              </div>
+              <div class="muted" style="margin:10px 2px 4px">打印浓度</div>
+              <div class="seg soft"><span>淡</span><span class="on" style="background:rgba(85,179,255,.18);color:#55B3FF">中</span><span>浓</span></div>
+            </div>
+          </div>
+          <div class="bottom-nav">
+            <div class="nav-item"><span class="ni">⌂</span>首页</div>
+            <div class="nav-item on"><span class="ni">▤</span>打印</div>
+            <div class="nav-item"><span class="ni">◇</span>我的</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 我的页 -->
+    <div class="phone-wrap">
+      <div class="screen-title">我的 · 设置</div>
+      <div class="screen-desc">深色列表 + 蓝色选中态</div>
+      <div class="phone">
+        <div class="screen">
+          <div class="statusbar"><span>23:05</span><span>5G</span></div>
+          <div class="content">
+            <div class="page-title">我的<span class="muted" style="font-size:13px;font-weight:400;margin-left:8px">Settings</span></div>
+            <div class="card">
+              <div class="mine-card-label">显示模式</div>
+              <div class="seg">
+                <span>跟随系统</span><span>浅色</span><span class="on">深色</span>
+              </div>
+              <div class="mine-card-label" style="margin-top:14px">界面主题</div>
+              <div class="theme-options">
+                <div class="theme-option on"><span class="dot" style="background:#55B3FF"></span><div class="grow bold">Linear 暗色</div><span class="muted">当前</span></div>
+                <div class="theme-option"><span class="dot" style="background:#6C5CE7"></span><div class="grow">紫罗兰</div></div>
+                <div class="theme-option"><span class="dot" style="background:#176B5B"></span><div class="grow">墨绿纸感</div></div>
+              </div>
+            </div>
+            <div class="card">
+              <div class="mine-card-label">设备管理</div>
+              <div class="menu-row"><span class="ma">📡</span><div class="grow bold">打印机</div><span class="muted">Qring_D6E9</span></div>
+              <div class="menu-row"><span class="ma">🕑</span><div class="grow bold">打印历史</div><span class="muted">100 条</span></div>
+              <div class="menu-row"><span class="ma">⚙️</span><div class="grow bold">打印设置</div><span class="muted">浓度/进纸</span></div>
+            </div>
+            <div class="card">
+              <div class="mine-card-label">关于</div>
+              <div class="menu-row"><span class="ma">ℹ️</span><div class="grow bold">版本信息</div><span class="muted">1.0.0</span></div>
+              <div class="menu-row"><span class="ma">🔄</span><div class="grow bold">检查更新</div><span class="muted">最新</span></div>
+            </div>
+          </div>
+          <div class="bottom-nav">
+            <div class="nav-item"><span class="ni">⌂</span>首页</div>
+            <div class="nav-item"><span class="ni">▤</span>打印</div>
+            <div class="nav-item on"><span class="ni">◇</span>我的</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="spec-grid">
+    <div class="spec-card">
+      <h3>适合氛围</h3>
+      <ul>
+        <li>夜间使用 / 室内暗光场景</li>
+        <li>“工具感”最强，适合极客用户</li>
+        <li>与当前系统深色模式天然契合</li>
+      </ul>
+    </div>
+    <div class="spec-card">
+      <h3>落地改动</h3>
+      <ul>
+        <li>新增 UiTheme.LINEAR 暗色专属调色板</li>
+        <li>卡片双层 ring shadow + 1px 内高光</li>
+        <li>主按钮改为半透明白胶囊（暗色 CTA 模式）</li>
+        <li>文字统一中字重 500，正字距 +0.2px</li>
+      </ul>
+    </div>
+  </div>
+</div>
+</body>
+</html>

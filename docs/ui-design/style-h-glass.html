@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>风格 H · 玻璃拟态 Liquid Glass</title>
+<link rel="stylesheet" href="common.css">
+<style>
+  /* 风格 H：参考 iOS 26 Liquid Glass / 玻璃拟态——渐变背景 + 半透明磨砂卡片 + 高光描边 */
+  :root {
+    --bg: #E8F1FF;
+    --card: rgba(255,255,255,.58);
+    --text: #14213D;
+    --muted: #61708B;
+    --primary: #2E6FF2;
+    --primary-soft: rgba(46,111,242,.18);
+    --primary-glow: rgba(46,111,242,.28);
+    --outline: rgba(255,255,255,.42);
+    --divider: rgba(30,60,120,.12);
+    --nav-bg: rgba(255,255,255,.52);
+    --nav-border: 1px solid rgba(255,255,255,.36);
+    --seg-bg: rgba(255,255,255,.38);
+    --preview-bg: rgba(255,255,255,.34);
+    --preview-border: 1px dashed rgba(30,60,120,.20);
+    --radius: 18px;
+    --radius-lg: 28px;
+    --radius-icon: 22px;
+    --radius-btn: 999px;
+    --card-shadow: 0 10px 35px rgba(60,110,180,.16), 0 2px 8px rgba(255,255,255,.35) inset;
+    --card-border: 1px solid rgba(255,255,255,.44);
+    --btn-shadow: 0 10px 22px rgba(46,111,242,.28), 0 1px 0 rgba(255,255,255,.35) inset;
+    --status-bg: rgba(255,255,255,.26);
+    --pill-bg: rgba(255,255,255,.34);
+    --pill-text: #3E4D69;
+  }
+  body {
+    background:
+      radial-gradient(circle at 20% 20%, #A9D3FF 0, transparent 40%),
+      radial-gradient(circle at 80% 10%, #FFD9E8 0, transparent 45%),
+      radial-gradient(circle at 60% 90%, #D6C7FF 0, transparent 42%),
+      linear-gradient(135deg,#DFF0FF 0%,#E8F1FF 50%,#F3EDFF 100%);
+  }
+  .design-page {
+    backdrop-filter: blur(0);
+  }
+  .design-head .chip { background: rgba(255,255,255,.55); border:1px solid rgba(255,255,255,.5); }
+  .swatch { background: rgba(255,255,255,.6); border:1px solid rgba(255,255,255,.6); box-shadow: none; }
+  .spec-card { background: rgba(255,255,255,.55); backdrop-filter: blur(12px); border:1px solid rgba(255,255,255,.55); }
+  .phone { background: rgba(30,50,90,.25); }
+  .screen { background: var(--bg); backdrop-filter: blur(18px); }
+  .card, .quick, .bottom-nav { backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); }
+  .page-title { color:#14213D; text-shadow:0 1px 10px rgba(255,255,255,.5); }
+  .device-card { background: rgba(255,255,255,.44) !important; }
+  .bottom-nav .nav-item.on .ni { filter: drop-shadow(0 3px 10px rgba(46,111,242,.45)); }
+</style>
+</head>
+<body>
+<div class="design-page">
+  <a class="back-link" href="index.html">← 返回方案总览</a>
+  <div class="design-head">
+    <div class="eyebrow">Style H</div>
+    <h1>玻璃拟态 · Liquid Glass</h1>
+    <p>参考 <b>iOS 26 Liquid Glass</b>/现代玻璃拟态：渐变流动背景 + 半透明磨砂卡片 + 白色高光描边。像浮在彩色水面上的玻璃工作台，科技感强、颜值高。</p>
+    <div class="meta">
+      <span class="chip">灵感：iOS Liquid Glass / Glassmorphism</span>
+      <span class="chip">关键词：磨砂 · 半透明 · 高光 · 渐变</span>
+    </div>
+    <div class="palette-row">
+      <div class="swatch"><div class="color" style="background:#A9D3FF"></div><div class="name">天蓝</div><div class="hex">#A9D3FF</div></div>
+      <div class="swatch"><div class="color" style="background:#FFD9E8"></div><div class="name">樱粉</div><div class="hex">#FFD9E8</div></div>
+      <div class="swatch"><div class="color" style="background:#D6C7FF"></div><div class="name">薰衣草</div><div class="hex">#D6C7FF</div></div>
+      <div class="swatch"><div class="color" style="background:rgba(255,255,255,.58)"></div><div class="name">磨砂卡</div><div class="hex">#FFF</div></div>
+      <div class="swatch"><div class="color" style="background:#2E6FF2"></div><div class="name">主蓝</div><div class="hex">#2E6FF2</div></div>
+    </div>
+  </div>
+
+  <div class="phones">
+    <!-- 首页 -->
+    <div class="phone-wrap">
+      <div class="screen-title">首页 · 玻璃启动台</div>
+      <div class="screen-desc">渐变背景 + 磨砂设备卡</div>
+      <div class="phone">
+        <div class="screen">
+          <div class="statusbar"><span>11:11</span><span>5G</span></div>
+          <div class="content">
+            <div class="page-title">错题小印</div>
+            <div class="card device-card">
+              <div class="row">
+                <div class="device-icon" style="background:rgba(46,111,242,.22);color:#2E6FF2">🖨</div>
+                <div class="grow">
+                  <div class="bold">Qring_5CEA</div>
+                  <div class="device-sub">已连接 · 电量 75%</div>
+                </div>
+                <div class="btn-subtle">管理</div>
+              </div>
+              <div class="device-meta">
+                <span class="mini-pill">电量 75%</span>
+                <span class="mini-pill">纸张正常</span>
+                <span class="mini-pill">打印中</span>
+              </div>
+            </div>
+            <div class="section-label">快速入口</div>
+            <div class="grid-2">
+              <div class="quick"><div class="icon">🖼</div><b>图片</b><span>相册/拍照</span></div>
+              <div class="quick"><div class="icon">📄</div><b>文字</b><span>TXT 文本</span></div>
+              <div class="quick"><div class="icon">▦</div><b>条码</b><span>二维码</span></div>
+              <div class="quick"><div class="icon">✎</div><b>错题卡</b><span>题目+订正</span></div>
+            </div>
+            <div class="card">
+              <div class="mine-card-label">最近打印</div>
+              <div class="menu-row"><span class="ma">📄</span><div class="grow bold">新建文档</div><span class="muted">08-11 15:27</span></div>
+            </div>
+          </div>
+          <div class="bottom-nav">
+            <div class="nav-item on"><span class="ni">⌂</span>首页</div>
+            <div class="nav-item"><span class="ni">▤</span>打印</div>
+            <div class="nav-item"><span class="ni">◇</span>我的</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 打印页 -->
+    <div class="phone-wrap">
+      <div class="screen-title">打印 · 磨砂工作台</div>
+      <div class="screen-desc">半透明预览 + 蓝主操作</div>
+      <div class="phone">
+        <div class="screen">
+          <div class="statusbar"><span>11:11</span><span>5G</span></div>
+          <div class="content">
+            <div class="row">
+              <div class="page-title" style="padding:0;font-size:20px">图片打印</div>
+              <div class="grow"></div>
+              <button class="btn-primary">🖨 打印</button>
+            </div>
+            <div class="seg">
+              <span>文字</span><span class="on">图片</span><span>条码</span><span>文档</span><span>其它</span>
+            </div>
+            <div class="preview">
+              <span style="font-size:38px">🖼</span>
+              <span style="margin-top:6px">玻璃预览区</span>
+              <small>选择图片后显示</small>
+            </div>
+            <div class="card">
+              <div class="row" style="margin-bottom:8px">
+                <div class="device-icon" style="background:rgba(46,111,242,.22);color:#2E6FF2">▧</div>
+                <div class="grow"><div class="bold">IMG_2026-09-05.jpg</div><div class="muted">自动增强 · 58mm</div></div>
+                <div class="btn-subtle">更换</div>
+              </div>
+              <div class="func-tabs">
+                <span class="on">常用</span><span>效果</span><span>排版</span><span>更多</span>
+              </div>
+              <div class="grid-2" style="margin-top:5px">
+                <div class="btn-subtle text-center">✂ 裁剪</div>
+                <div class="btn-subtle text-center">🖌 画布</div>
+                <div class="btn-subtle text-center">☀ 增强</div>
+                <div class="btn-subtle text-center" style="color:#FF5A5F">✖ 清除</div>
+              </div>
+              <div class="muted" style="margin:10px 2px 4px">打印浓度</div>
+              <div class="seg soft"><span>淡</span><span class="on">中</span><span>浓</span></div>
+            </div>
+          </div>
+          <div class="bottom-nav">
+            <div class="nav-item"><span class="ni">⌂</span>首页</div>
+            <div class="nav-item on"><span class="ni">▤</span>打印</div>
+            <div class="nav-item"><span class="ni">◇</span>我的</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 我的页 -->
+    <div class="phone-wrap">
+      <div class="screen-title">我的 · 玻璃设置</div>
+      <div class="screen-desc">磨砂列表 + 蓝高亮</div>
+      <div class="phone">
+        <div class="screen">
+          <div class="statusbar"><span>11:11</span><span>5G</span></div>
+          <div class="content">
+            <div class="page-title">我的</div>
+            <div class="card">
+              <div class="mine-card-label">界面主题</div>
+              <div class="theme-options">
+                <div class="theme-option on"><span class="dot" style="background:#2E6FF2"></span><div class="grow bold">玻璃拟态</div><span class="muted">当前</span></div>
+                <div class="theme-option"><span class="dot" style="background:#111"></span><div class="grow">热敏黑白</div></div>
+                <div class="theme-option"><span class="dot" style="background:#43089F"></span><div class="grow">Clay 奶油</div></div>
+              </div>
+            </div>
+            <div class="card">
+              <div class="mine-card-label">设备管理</div>
+              <div class="menu-row"><span class="ma">📡</span><div class="grow bold">打印机</div><span class="muted">Qring_5CEA</span></div>
+              <div class="menu-row"><span class="ma">🕑</span><div class="grow bold">打印历史</div><span class="muted">100 条</span></div>
+              <div class="menu-row"><span class="ma">⚙️</span><div class="grow bold">打印设置</div><span class="muted">浓度/进纸</span></div>
+            </div>
+            <div class="card">
+              <div class="mine-card-label">关于</div>
+              <div class="menu-row"><span class="ma">ℹ️</span><div class="grow bold">版本信息</div><span class="muted">1.0.0</span></div>
+            </div>
+          </div>
+          <div class="bottom-nav">
+            <div class="nav-item"><span class="ni">⌂</span>首页</div>
+            <div class="nav-item"><span class="ni">▤</span>打印</div>
+            <div class="nav-item on"><span class="ni">◇</span>我的</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="spec-grid">
+    <div class="spec-card">
+      <h3>适合氛围</h3>
+      <ul>
+        <li>高颜值、适合宣传展示</li>
+        <li>渐变背景 + 磨砂很有 App Store 气质</li>
+        <li>可以和暗色/浅色模式灵活搭配</li>
+      </ul>
+    </div>
+    <div class="spec-card">
+      <h3>落地改动</h3>
+      <ul>
+        <li>新增 UiTheme.GLASS：卡用半透明 + backdrop-filter</li>
+        <li>背景用多层径向渐变（蓝/粉/紫）</li>
+        <li>卡片 28px 大圆角 + 白色高光描边</li>
+        <li>底部导航也做半透明磨砂</li>
+      </ul>
+    </div>
+  </div>
+</div>
+</body>
+</html>

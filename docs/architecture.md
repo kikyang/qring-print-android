@@ -2,7 +2,7 @@
 
 > 给人类看的架构文档：不解释每一行代码，而是讲清楚"这套系统是怎么拼起来的、每个部件为什么存在"。
 > 读完本文你应该能回答：一条错题从手机屏幕到热敏纸，中间经历了什么？
-> 最近同步：v0.7.5（2026-09-01）。
+> 最近同步：v0.7.6（2026-09-05）。
 
 ---
 
@@ -274,7 +274,7 @@ android/app/src/main/java/com/qring/print/
 ├── HistoryStore.kt / HistoryActivity.kt  # 打印历史（无损光栅重打 + 缩略图）
 ├── Settings.kt               # 打印设置持久化（浓度/走纸/连接模式/阈值/描边参数）
 ├── DebugActivity.kt          # 调试台：收发 hex 日志/原始命令/BLE 直连（藏于"我的→关于"）
-├── Design.kt                 # UI 设计系统：微信小程序风（灰底白卡/微信绿/8px 圆角/线性图标）
+├── Design.kt                 # UI 设计系统：8 套主题（紫罗兰/墨绿纸感/暗色/手账/热敏黑白/奶油多彩/Apple Bento/玻璃拟态）
 ├── FakePrinter.kt            # 虚拟打印机协议引擎（字节流状态机，测试/联调仿真）
 ├── FakePrinterConnection.kt  # 虚拟打印机连接（PrinterConnection 实现，测试注入）
 └── MainActivity.kt           # 主界面：三 Tab（首页/打印/我的）+ 全部交互

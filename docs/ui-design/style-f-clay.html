@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>风格 F · Clay 奶油多彩手工纸</title>
+<link rel="stylesheet" href="common.css">
+<style>
+  /* 风格 F：参考 Clay 官网设计语言——奶油底、燕麦边、多彩“果汁”色块、大圆角、硬投影 */
+  :root {
+    --bg: #FAF9F7;
+    --card: #FFFFFF;
+    --text: #111111;
+    --muted: #9F9B93;
+    --primary: #43089F;
+    --primary-soft: #EEE9FC;
+    --primary-glow: rgba(67,8,159,.20);
+    --outline: #DAD4C8;
+    --divider: #EEE9DF;
+    --nav-bg: #FFFDF9;
+    --nav-border: 1px solid #EEE9DF;
+    --seg-bg: #F1EEE6;
+    --preview-bg: #FEFDFB;
+    --preview-border: 1px dashed #DAD4C8;
+    --radius: 16px;
+    --radius-lg: 26px;
+    --radius-icon: 20px;
+    --radius-btn: 999px;
+    --card-shadow: rgba(0,0,0,.10) 0px 1px 1px, rgba(0,0,0,.04) 0px -1px 1px inset, rgba(0,0,0,.05) 0px -0.5px 1px;
+    --card-border: 1px solid #DAD4C8;
+    --btn-shadow: 2px 2px 0 #43089F;
+    --status-bg: #FAF9F7;
+    --pill-bg: #F3F0EA;
+    --pill-text: #6B655B;
+  }
+  body {
+    background: linear-gradient(180deg,#F1EEE7 0%,#F8F5EF 100%);
+  }
+  .chip.pal { background:#43089F; }
+  .swatch { border-radius: 16px; border:1px solid #DAD4C8; box-shadow: none; }
+  .quick { border:1px solid #DAD4C8; }
+  .quick:nth-child(1) .icon { background:#84E7A5; color:#02492A; }
+  .quick:nth-child(2) .icon { background:#F8CC65; color:#9D6A09; }
+  .quick:nth-child(3) .icon { background:#C1B0FF; color:#32037D; }
+  .quick:nth-child(4) .icon { background:#FC7981; color:#7D1426; }
+  .btn-primary { box-shadow:3px 3px 0 #111; }
+  .some-dashed { border: 1px dashed #C8BBA4; }
+  .spec-card { border: 1px solid #DAD4C8; box-shadow: 3px 3px 0 rgba(0,0,0,.12); }
+</style>
+</head>
+<body>
+<div class="design-page">
+  <a class="back-link" href="index.html">← 返回方案总览</a>
+  <div class="design-head">
+    <div class="eyebrow">Style F</div>
+    <h1>Clay 奶油 · 多彩手工纸</h1>
+    <p>参考 <b>Clay</b> 网站：奶油纸底 + 燕麦色描边 + 多巴胺果汁色块 + 大圆角 + 硬投影。把“错题小印”做得像手作文具品牌，活泼、有温度、完全不“工具脸”。</p>
+    <div class="meta">
+      <span class="chip">灵感：Clay / 奶油色 / 多巴胺配色</span>
+      <span class="chip">关键词：奶油 · 燕麦边 · 果汁色 · 大圆角</span>
+    </div>
+    <div class="palette-row">
+      <div class="swatch"><div class="color" style="background:#FAF9F7"></div><div class="name">奶油底</div><div class="hex">#FAF9F7</div></div>
+      <div class="swatch"><div class="color" style="background:#84E7A5"></div><div class="name">抹茶</div><div class="hex">#84E7A5</div></div>
+      <div class="swatch"><div class="color" style="background:#F8CC65"></div><div class="name">柠檬</div><div class="hex">#F8CC65</div></div>
+      <div class="swatch"><div class="color" style="background:#C1B0FF"></div><div class="name">芋泥紫</div><div class="hex">#C1B0FF</div></div>
+      <div class="swatch"><div class="color" style="background:#FC7981"></div><div class="name">石榴粉</div><div class="hex">#FC7981</div></div>
+    </div>
+  </div>
+
+  <div class="phones">
+    <!-- 首页 -->
+    <div class="phone-wrap">
+      <div class="screen-title">首页 · 手作文具</div>
+      <div class="screen-desc">彩色功能块 + 奶油设备卡</div>
+      <div class="phone">
+        <div class="screen">
+          <div class="statusbar"><span>08:20</span><span>5G</span></div>
+          <div class="content">
+            <div class="page-title">错题小印</div>
+            <div class="card" style="background:#F2EEE4;border:1px dashed #C8BBA4;color:#3A3025">
+              <div class="row">
+                <div class="device-icon" style="background:#43089F;color:#fff">🖨</div>
+                <div class="grow">
+                  <div class="bold">Qring_5CEA</div>
+                  <div class="device-sub">已连接 · 电量 75%</div>
+                </div>
+                <div class="btn-subtle">管理</div>
+              </div>
+              <div class="device-meta">
+                <span class="mini-pill">🥬 电量 75%</span>
+                <span class="mini-pill">🧻 纸张正常</span>
+                <span class="mini-pill">🖨 打印中</span>
+              </div>
+            </div>
+            <div class="section-label">今天打什么？</div>
+            <div class="grid-2">
+              <div class="quick"><div class="icon">🖼</div><b>图片</b><span>相册/拍照</span></div>
+              <div class="quick"><div class="icon">📄</div><b>文字</b><span>TXT 文本</span></div>
+              <div class="quick"><div class="icon">▦</div><b>条码</b><span>二维码</span></div>
+              <div class="quick"><div class="icon">✎</div><b>错题卡</b><span>题目+订正</span></div>
+            </div>
+            <div class="card some-dashed">
+              <div class="mine-card-label" style="color:#43089F">最近打印</div>
+              <div class="menu-row"><span class="ma">🍃</span><div class="grow bold">一元二次方程错题卡</div><span class="muted">昨天</span></div>
+              <div class="menu-row"><span class="ma">🍋</span><div class="grow bold">英语单词表</div><span class="muted">2 天前</span></div>
+            </div>
+          </div>
+          <div class="bottom-nav">
+            <div class="nav-item on"><span class="ni">⌂</span>首页</div>
+            <div class="nav-item"><span class="ni">▤</span>打印</div>
+            <div class="nav-item"><span class="ni">◇</span>我的</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 打印页 -->
+    <div class="phone-wrap">
+      <div class="screen-title">打印 · 多巴胺工作台</div>
+      <div class="screen-desc">彩色工具按钮 + 奶油纸预览</div>
+      <div class="phone">
+        <div class="screen">
+          <div class="statusbar"><span>08:20</span><span>5G</span></div>
+          <div class="content">
+            <div class="row">
+              <div class="page-title" style="padding:0;font-size:20px">图片打印</div>
+              <div class="grow"></div>
+              <button class="btn-primary">🖨 打印</button>
+            </div>
+            <div class="seg">
+              <span>文字</span><span class="on">图片</span><span>条码</span><span>文档</span><span>其它</span>
+            </div>
+            <div class="preview">
+              <span style="font-size:38px">🖼</span>
+              <span style="margin-top:6px">请选择图片</span>
+              <small>可连续打印多张</small>
+            </div>
+            <div class="card">
+              <div class="row" style="margin-bottom:8px">
+                <div class="device-icon" style="background:#84E7A5;color:#02492A">▧</div>
+                <div class="grow"><div class="bold">IMG_2026-09-05.jpg</div><div class="muted">自动增强 · 58mm</div></div>
+                <div class="btn-subtle">更换</div>
+              </div>
+              <div class="func-tabs">
+                <span class="on">常用</span><span>效果</span><span>排版</span><span>更多</span>
+              </div>
+              <div class="grid-2" style="margin-top:5px">
+                <div class="btn-subtle text-center" style="background:#FFF4F3;border-color:#F4C7CC;color:#B33B4B">✂ 裁剪</div>
+                <div class="btn-subtle text-center" style="background:#F0F9F1;border-color:#BCE6C7;color:#078A52">🖌 画布</div>
+                <div class="btn-subtle text-center" style="background:#FFF8E0;border-color:#F0D98C;color:#9D6A09">☀ 增强</div>
+                <div class="btn-subtle text-center" style="background:#F2F0FF;border-color:#C1B0FF;color:#32037D">✖ 清除</div>
+              </div>
+              <div class="muted" style="margin:10px 2px 4px">打印浓度</div>
+              <div class="seg soft"><span>淡</span><span class="on">中</span><span>浓</span></div>
+            </div>
+          </div>
+          <div class="bottom-nav">
+            <div class="nav-item"><span class="ni">⌂</span>首页</div>
+            <div class="nav-item on"><span class="ni">▤</span>打印</div>
+            <div class="nav-item"><span class="ni">◇</span>我的</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 我的页 -->
+    <div class="phone-wrap">
+      <div class="screen-title">我的 · 文具盒</div>
+      <div class="screen-desc">奶油列表 + 果汁主题选中态</div>
+      <div class="phone">
+        <div class="screen">
+          <div class="statusbar"><span>08:20</span><span>5G</span></div>
+          <div class="content">
+            <div class="page-title">我的</div>
+            <div class="card">
+              <div class="mine-card-label">界面主题</div>
+              <div class="theme-options">
+                <div class="theme-option on"><span class="dot" style="background:#43089F"></span><div class="grow bold">Clay 奶油多彩</div><span class="muted">当前</span></div>
+                <div class="theme-option"><span class="dot" style="background:#111"></span><div class="grow">热敏黑白</div></div>
+                <div class="theme-option"><span class="dot" style="background:#176B5B"></span><div class="grow">墨绿</div></div>
+              </div>
+            </div>
+            <div class="card">
+              <div class="mine-card-label">文具管理</div>
+              <div class="menu-row"><span class="ma">🍃</span><div class="grow bold">打印机</div><span class="muted">Qring_5CEA</span></div>
+              <div class="menu-row"><span class="ma">🍋</span><div class="grow bold">我的模板</div><span class="muted">12 个</span></div>
+              <div class="menu-row"><span class="ma">🍇</span><div class="grow bold">打印设置</div><span class="muted">浓度/进纸</span></div>
+            </div>
+            <div class="card">
+              <div class="mine-card-label">关于</div>
+              <div class="menu-row"><span class="ma">🌸</span><div class="grow bold">版本信息</div><span class="muted">1.0.0</span></div>
+              <div class="menu-row"><span class="ma">🔄</span><div class="grow bold">检查更新</div><span class="muted">最新</span></div>
+            </div>
+          </div>
+          <div class="bottom-nav">
+            <div class="nav-item"><span class="ni">⌂</span>首页</div>
+            <div class="nav-item"><span class="ni">▤</span>打印</div>
+            <div class="nav-item on"><span class="ni">◇</span>我的</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="spec-grid">
+    <div class="spec-card">
+      <h3>适合氛围</h3>
+      <ul>
+        <li>学生/家长觉得可爱、有温度</li>
+        <li>和 A-D 反差最大，多巴胺配色很抓眼</li>
+        <li>可作为“主题市场”里的特别款</li>
+      </ul>
+    </div>
+    <div class="spec-card">
+      <h3>落地改动</h3>
+      <ul>
+        <li>新增 UiTheme.CLAY：奶油底 + 燕麦边</li>
+        <li>卡片大圆角 26，部分虚线描边</li>
+        <li>功能图标用抹茶/柠檬/芋泥/石榴多色</li>
+        <li>按钮用硬投影，模拟手工纸卡片</li>
+      </ul>
+    </div>
+  </div>
+</div>
+</body>
+</html>

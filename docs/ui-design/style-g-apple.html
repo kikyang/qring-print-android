@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>风格 G · Apple Bento 黑白极简</title>
+<link rel="stylesheet" href="common.css">
+<style>
+  /* 风格 G：参考 Apple 设计体系——黑/白二分法、唯一 Apple Blue、Bento 网格、负字距 */
+  :root {
+    --bg: #F5F5F7;
+    --card: #FFFFFF;
+    --text: #1D1D1F;
+    --muted: rgba(0,0,0,.48);
+    --primary: #0071E3;
+    --primary-soft: #EAF3FE;
+    --primary-glow: rgba(0,113,227,.20);
+    --outline: rgba(0,0,0,.08);
+    --divider: rgba(0,0,0,.06);
+    --nav-bg: rgba(255,255,255,.88);
+    --nav-border: 1px solid rgba(0,0,0,.06);
+    --seg-bg: #EDEDF0;
+    --preview-bg: #FFFFFF;
+    --preview-border: 1px solid rgba(0,0,0,.08);
+    --radius: 10px;
+    --radius-lg: 18px;
+    --radius-icon: 18px;
+    --radius-btn: 12px;
+    --card-shadow: rgba(0,0,0,.22) 3px 5px 30px 0px;
+    --card-border: 1px solid rgba(255,255,255,.9);
+    --btn-shadow: none;
+    --status-bg: #F5F5F7;
+    --pill-bg: #F5F5F7;
+    --pill-text: #1D1D1F;
+  }
+  body {
+    background: linear-gradient(180deg,#000 0%,#1D1D1F 18%,#F5F5F7 18.1%);
+  }
+  .design-head h1, .design-head p, .design-head .eyebrow { color:#fff; }
+  .design-head .meta .chip { background:#1D1D1F; color:#fff; border:1px solid rgba(255,255,255,.1); }
+  .design-head p { color:#ccc; }
+  .chip.pal { background:#0071E3; }
+  .swatch { border-radius: 18px; }
+  .page-title { letter-spacing: -.02em; }
+  .btn-primary { border-radius: 12px; background:#0071E3; }
+  .btn-subtle { border-radius: 12px; }
+  .nav-item.on .ni { filter: none; }
+  /* Bento 特色大宫格 */
+  .bento {
+    display: grid; grid-template-columns: 1.35fr 1fr; grid-auto-rows: 104px; gap: 10px;
+  }
+  .bento .tile {
+    background:#fff; border-radius:18px; padding:13px;
+    box-shadow: 0 18px 30px rgba(0,0,0,.10), 0 2px 6px rgba(0,0,0,.04);
+    display:flex; flex-direction:column; justify-content:space-between;
+  }
+  .bento .tile .t-icon { font-size: 24px; color:#0071E3; }
+  .bento .tile b { font-size:14px; }
+  .bento .tile span { font-size:11px; color:rgba(0,0,0,.48); }
+  .bento .tile.big { grid-row: span 2; background:#1D1D1F; color:#fff; align-items:flex-start; }
+  .bento .tile.big span { color:rgba(255,255,255,.6); }
+  .bento .tile.big .t-icon { color:#2997FF; font-size:38px; }
+</style>
+</head>
+<body>
+<div class="design-page">
+  <a class="back-link" href="index.html">← 返回方案总览</a>
+  <div class="design-head">
+    <div class="eyebrow">Style G</div>
+    <h1>Apple Bento 黑白极简</h1>
+    <p>参考 <b>Apple 设计体系</b>：黑白二分法 + 唯一蓝色交互 + Bento 网格。把工具功能做成“产品卡片墙”，像苹果官网一样克制、精致、高级。</p>
+    <div class="meta">
+      <span class="chip">灵感：Apple / Bento Grid / 黑白二分</span>
+      <span class="chip">关键词：Apple Blue · Bento · 负字距 · 克制</span>
+    </div>
+    <div class="palette-row">
+      <div class="swatch"><div class="color" style="background:#F5F5F7"></div><div class="name">浅灰底</div><div class="hex">#F5F5F7</div></div>
+      <div class="swatch"><div class="color" style="background:#1D1D1F"></div><div class="name">近黑</div><div class="hex">#1D1D1F</div></div>
+      <div class="swatch"><div class="color" style="background:#0071E3"></div><div class="name">Apple Blue</div><div class="hex">#0071E3</div></div>
+      <div class="swatch"><div class="color" style="background:#FFFFFF"></div><div class="name">白卡</div><div class="hex">#FFFFFF</div></div>
+      <div class="swatch"><div class="color" style="background:#000000"></div><div class="name">纯黑</div><div class="hex">#000000</div></div>
+    </div>
+  </div>
+
+  <div class="phones">
+    <!-- 首页 -->
+    <div class="phone-wrap">
+      <div class="screen-title">首页 · Bento 启动台</div>
+      <div class="screen-desc">黑卡设备 + 苹果宫格</div>
+      <div class="phone">
+        <div class="screen">
+          <div class="statusbar"><span>10:24</span><span>5G</span></div>
+          <div class="content">
+            <div class="page-title">错题小印</div>
+            <div class="card" style="background:#1D1D1F;color:#fff;border:none">
+              <div class="row">
+                <div class="device-icon" style="background:rgba(255,255,255,.12);color:#2997FF">🖨</div>
+                <div class="grow">
+                  <div class="bold">Qring_5CEA</div>
+                  <div class="device-sub">已连接 · 电量 75%</div>
+                </div>
+                <div class="btn-subtle" style="color:#2997FF;border-color:rgba(41,151,255,.4)">管理</div>
+              </div>
+              <div class="device-meta">
+                <span class="mini-pill" style="background:rgba(255,255,255,.12);color:#fff">电量 75%</span>
+                <span class="mini-pill" style="background:rgba(255,255,255,.12);color:#fff">纸张正常</span>
+                <span class="mini-pill" style="background:rgba(255,255,255,.12);color:#fff">打印中</span>
+              </div>
+            </div>
+            <div class="bento">
+              <div class="tile big"><span class="t-icon">🖼</span><div><b>图片工作台</b><span>相册 · 拍照 · 增强</span></div><div class="btn-subtle" style="color:#fff;border-color:rgba(255,255,255,.28)">打开</div></div>
+              <div class="tile"><span class="t-icon">T</span><div><b>文字打印</b><span>TXT · 排版</span></div></div>
+              <div class="tile"><span class="t-icon">▦</span><div><b>条码</b><span>13 种码制</span></div></div>
+              <div class="tile"><span class="t-icon">▤</span><div><b>文档</b><span>PDF/Word/Excel</span></div></div>
+              <div class="tile"><span class="t-icon">✎</span><div><b>错题卡</b><span>模板+复习</span></div></div>
+            </div>
+          </div>
+          <div class="bottom-nav">
+            <div class="nav-item on"><span class="ni">⌂</span>首页</div>
+            <div class="nav-item"><span class="ni">▤</span>打印</div>
+            <div class="nav-item"><span class="ni">◇</span>我的</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 打印页 -->
+    <div class="phone-wrap">
+      <div class="screen-title">打印 · 产品卡式工作台</div>
+      <div class="screen-desc">大预览 + 蓝色主按钮</div>
+      <div class="phone">
+        <div class="screen">
+          <div class="statusbar"><span>10:24</span><span>5G</span></div>
+          <div class="content">
+            <div class="row">
+              <div class="page-title" style="padding:0;font-size:20px">图片打印</div>
+              <div class="grow"></div>
+              <button class="btn-primary">打印</button>
+            </div>
+            <div class="seg">
+              <span>文字</span><span class="on">图片</span><span>条码</span><span>文档</span><span>其它</span>
+            </div>
+            <div class="preview" style="background:#F5F5F7;border:none">
+              <span style="font-size:36px;color:#C7C7CC">🖼</span>
+              <span style="margin-top:6px">选择图片后自动预览</span>
+            </div>
+            <div class="card">
+              <div class="row" style="margin-bottom:8px">
+                <div class="device-icon" style="background:#EAF3FE;color:#0071E3">▧</div>
+                <div class="grow"><div class="bold">IMG_2026-09-05.jpg</div><div class="muted">自动增强 · 58mm</div></div>
+                <div class="btn-subtle">更换</div>
+              </div>
+              <div class="func-tabs">
+                <span class="on">常用</span><span>效果</span><span>排版</span><span>更多</span>
+              </div>
+              <div class="grid-2" style="margin-top:5px">
+                <div class="btn-subtle text-center">✂ 裁剪</div>
+                <div class="btn-subtle text-center">🖌 画布</div>
+                <div class="btn-subtle text-center">☀ 增强</div>
+                <div class="btn-subtle text-center" style="color:#FF3B30">✖ 清除</div>
+              </div>
+              <div class="muted" style="margin:10px 2px 4px">打印浓度</div>
+              <div class="seg soft"><span>淡</span><span class="on">中</span><span>浓</span></div>
+            </div>
+          </div>
+          <div class="bottom-nav">
+            <div class="nav-item"><span class="ni">⌂</span>首页</div>
+            <div class="nav-item on"><span class="ni">▤</span>打印</div>
+            <div class="nav-item"><span class="ni">◇</span>我的</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 我的页 -->
+    <div class="phone-wrap">
+      <div class="screen-title">我的 · 极简单设置</div>
+      <div class="screen-desc">灰底白卡 + 蓝色焦点</div>
+      <div class="phone">
+        <div class="screen">
+          <div class="statusbar"><span>10:24</span><span>5G</span></div>
+          <div class="content">
+            <div class="page-title">我的</div>
+            <div class="card">
+              <div class="mine-card-label">界面主题</div>
+              <div class="theme-options">
+                <div class="theme-option on"><span class="dot" style="background:#0071E3"></span><div class="grow bold">Apple Bento</div><span class="muted">当前</span></div>
+                <div class="theme-option"><span class="dot" style="background:#111"></span><div class="grow">热敏黑白</div></div>
+                <div class="theme-option"><span class="dot" style="background:#43089F"></span><div class="grow">Clay 奶油</div></div>
+              </div>
+            </div>
+            <div class="card">
+              <div class="mine-card-label">设备管理</div>
+              <div class="menu-row"><span class="ma">📡</span><div class="grow bold">打印机</div><span class="muted">Qring_5CEA</span></div>
+              <div class="menu-row"><span class="ma">🕑</span><div class="grow bold">打印历史</div><span class="muted">100 条</span></div>
+              <div class="menu-row"><span class="ma">⚙️</span><div class="grow bold">打印设置</div><span class="muted">浓度/进纸</span></div>
+            </div>
+            <div class="card">
+              <div class="mine-card-label">关于</div>
+              <div class="menu-row"><span class="ma">ℹ️</span><div class="grow bold">版本信息</div><span class="muted">1.0.0</span></div>
+            </div>
+          </div>
+          <div class="bottom-nav">
+            <div class="nav-item"><span class="ni">⌂</span>首页</div>
+            <div class="nav-item"><span class="ni">▤</span>打印</div>
+            <div class="nav-item on"><span class="ni">◇</span>我的</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="spec-grid">
+    <div class="spec-card">
+      <h3>适合氛围</h3>
+      <ul>
+        <li>高级、克制、像苹果原生应用</li>
+        <li>黑白灰+唯一蓝，永远不会乱</li>
+        <li>Bento 大宫格适合展示“多功能”</li>
+      </ul>
+    </div>
+    <div class="spec-card">
+      <h3>落地改动</h3>
+      <ul>
+        <li>新增 UiTheme.APPLE：F5F5F7 底 + #0071E3</li>
+        <li>首页改成 Bento 网格，黑色设备卡</li>
+        <li>按钮 12px 方角，不用胶囊</li>
+        <li>全局负字距、大留白、弱投影</li>
+      </ul>
+    </div>
+  </div>
+</div>
+</body>
+</html>

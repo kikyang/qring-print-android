@@ -11,6 +11,9 @@ object ReleaseNotes {
 
     // 版本 → 更新说明，新版本在前。发版时在顶部新增一条（与 version.json notes 保持一致）。
     private val LOG = listOf(
+        "0.7.6" to "· 界面主题改为 8 套差异化风格：紫罗兰 / 墨绿纸感 / 暗色效能 / 手账纸感 / 热敏黑白 / 奶油多彩 / Apple Bento / 玻璃拟态（移除旧微信风/简洁风/蓝白风）\n" +
+            "· 我的页主题选择改为竖向列表：色卡 + 名称 + 勾选态，选完立即生效\n" +
+            "· 同步新增 docs/ui-design/ 设计稿与 8 套新风格预览图",
         "0.7.5" to "· 条码扩至 13 种码制：新增 Code93 / UPC-E / DataMatrix / Aztec / PDF-417\n" +
             "· 条码输入清洗 + 校验位重算：EAN/UPC 校验位自动核验、ITF 奇数自动补位、Code39/93 转大写、Codabar 去空白\n" +
             "· 上游巡检降为一周一次（3 天周期已完成 3 次）",

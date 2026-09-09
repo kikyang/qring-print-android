@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>风格 D · 错题本手账纸感</title>
+<link rel="stylesheet" href="common.css">
+<style>
+  /* 风格 D：参考横线笔记本 / 错题本手账 App，暖纸底 + 横线 + 红蓝批改色 */
+  :root {
+    --bg: #FBF7EE;
+    --card: #FFFEF9;
+    --text: #3A3428;
+    --muted: #938A77;
+    --primary: #D95B43;
+    --primary-soft: #FBE4DE;
+    --primary-glow: rgba(217,91,67,.20);
+    --outline: #E5DBC7;
+    --divider: rgba(190,165,120,.22);
+    --nav-bg: #FFFDF6;
+    --nav-border: 1px solid #E9DFCB;
+    --seg-bg: #F0E8D8;
+    --preview-bg: #FFFEF9;
+    --preview-border: 1px solid #E2D7C0;
+    --radius: 12px;
+    --radius-lg: 22px;
+    --radius-icon: 16px;
+    --radius-btn: 999px;
+    --card-shadow: 0 6px 22px rgba(160,130,70,.10), 0 1px 2px rgba(160,130,70,.06);
+    --card-border: 1px solid rgba(255,255,255,.85);
+    --btn-shadow: 0 8px 18px rgba(217,91,67,.22);
+    --status-bg: #FBF7EE;
+    --pill-bg: #F2EAD9;
+    --pill-text: #6C5B45;
+  }
+  body {
+    background: linear-gradient(180deg,#F1E7D5 0%,#EDE0CB 100%);
+  }
+  .preview {
+    background:
+      repeating-linear-gradient(transparent 0 27px, rgba(190,165,120,.13) 27px 28px),
+      #FFFEF9;
+  }
+  .statusbar::after {
+    content: "";
+    position: absolute;
+    left: 0; right: 0; top: 42px;
+    height: 3px;
+    background: linear-gradient(90deg,#D95B43 0 39%,#3F7EBB 39% 78%,#E2B43C 78% 100%);
+  }
+  .chip.pal { background: #D95B43; }
+  .spec-card h3 { color: #D95B43; }
+  .page-title {
+    border-bottom: 2px solid #D95B43;
+    display: inline-block;
+    padding-bottom: 5px;
+  }
+</style>
+</head>
+<body>
+<div class="design-page">
+  <a class="back-link" href="index.html">← 返回方案总览</a>
+  <div class="design-head">
+    <div class="eyebrow">Style D</div>
+    <h1>错题本手账 · 纸感</h1>
+    <p>参考“横线笔记本风”的错题页设计：把 App 做成一本真正的错题手账——暖米色纸底、淡淡的横线、红笔批改色、蓝笔订正色、便利贴式功能块。比冷冰冰的工具更有亲和力，特别适合学生/家长用户。</p>
+    <div class="meta">
+      <span class="chip">灵感：横线笔记本 / 手账 App / 错题本心智</span>
+      <span class="chip">关键词：米色纸 · 横线 · 红蓝笔 · 便利贴</span>
+    </div>
+    <div class="palette-row">
+      <div class="swatch"><div class="color" style="background:#FBF7EE"></div><div class="name">纸底</div><div class="hex">#FBF7EE</div></div>
+      <div class="swatch"><div class="color" style="background:#FFFEF9"></div><div class="name">白纸</div><div class="hex">#FFFEF9</div></div>
+      <div class="swatch"><div class="color" style="background:#D95B43"></div><div class="name">红笔</div><div class="hex">#D95B43</div></div>
+      <div class="swatch"><div class="color" style="background:#3F7EBB"></div><div class="name">蓝笔</div><div class="hex">#3F7EBB</div></div>
+      <div class="swatch"><div class="color" style="background:#E2B43C"></div><div class="name">荧光</div><div class="hex">#E2B43C</div></div>
+    </div>
+  </div>
+
+  <div class="phones">
+    <!-- 首页 -->
+    <div class="phone-wrap">
+      <div class="screen-title">首页 · 错题本封面</div>
+      <div class="screen-desc">封面式标题 + 纸感设备卡 + 手账入口</div>
+      <div class="phone">
+        <div class="screen">
+          <div class="statusbar"><span>19:45</span><span>5G</span></div>
+          <div class="content">
+            <div class="page-title">错题小印</div>
+            <div class="card" style="background:#FFFEF9">
+              <div class="row">
+                <div class="device-icon" style="background:#FBE4DE;color:#D95B43">📓</div>
+                <div class="grow">
+                  <h2>Qring_5CEA</h2>
+                  <div class="device-sub">已连接 · 电量 75%</div>
+                </div>
+                <div class="btn-subtle" style="color:#3F7EBB;border-color:#C8DAEF">管理</div>
+              </div>
+              <div class="device-meta">
+                <span class="mini-pill" style="background:#E6F1FA;color:#3F7EBB">电量 75%</span>
+                <span class="mini-pill" style="background:#FBE4DE;color:#C7442F">纸张正常</span>
+                <span class="mini-pill" style="background:#F8EDD2;color:#B8860B">打印中</span>
+              </div>
+            </div>
+            <div class="section-label" style="color:#D95B43">今天要打什么？</div>
+            <div class="grid-2">
+              <div class="quick" style="background:#FFFDF6">
+                <div class="icon" style="background:#FBE4DE;color:#D95B43">✎</div>
+                <b>错题卡</b><span>题目 + 错因 + 订正</span>
+              </div>
+              <div class="quick" style="background:#FFFDF6">
+                <div class="icon" style="background:#E6F1FA;color:#3F7EBB">▤</div>
+                <b>试卷讲义</b><span>PDF / Word / PPT</span>
+              </div>
+              <div class="quick" style="background:#FFFDF6">
+                <div class="icon" style="background:#F8EDD2;color:#B8860B">▦</div>
+                <b>条码标签</b><span>二维码 / 条形码</span>
+              </div>
+              <div class="quick" style="background:#FFFDF6">
+                <div class="icon" style="background:#F6E7F5;color:#B05AA5">☾</div>
+                <b>复习计划</b><span>每日计划 / 单词表</span>
+              </div>
+            </div>
+            <div class="card" style="background:#FFFDF6">
+              <div class="mine-card-label" style="color:#3F7EBB">最近打印</div>
+              <div class="menu-row"><span class="ma">📓</span><div class="grow bold">一元二次方程错题卡</div><span class="muted">昨天</span></div>
+              <div class="menu-row"><span class="ma">🗒</span><div class="grow bold">英语单词表</div><span class="muted">2 天前</span></div>
+            </div>
+          </div>
+          <div class="bottom-nav">
+            <div class="nav-item on"><span class="ni">📖</span>首页</div>
+            <div class="nav-item"><span class="ni">🖨</span>打印</div>
+            <div class="nav-item"><span class="ni">👤</span>我的</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 打印页 -->
+    <div class="phone-wrap">
+      <div class="screen-title">打印 · 错题卡工作台</div>
+      <div class="screen-desc">横线预览 + 红笔主操作 + 便利贴工具</div>
+      <div class="phone">
+        <div class="screen">
+          <div class="statusbar"><span>19:45</span><span>5G</span></div>
+          <div class="content">
+            <div class="row">
+              <div class="page-title" style="padding:0;font-size:20px;border:none;color:#D95B43">错题卡</div>
+              <div class="grow"></div>
+              <button class="btn-primary">🖨 打印</button>
+            </div>
+            <div class="seg">
+              <span>文字</span><span>图片</span><span class="on">错题卡</span><span>条码</span><span>其它</span>
+            </div>
+            <div class="preview">
+              <span style="font-size:38px;color:#D95B43">✎</span>
+              <span style="margin-top:6px">题目图片 · 错因 · 知识点</span>
+              <small>横线纸打印预览</small>
+            </div>
+            <div class="card" style="background:#FFFDF6">
+              <div class="row" style="margin-bottom:8px">
+                <div class="device-icon" style="background:#FBE4DE;color:#D95B43">🖋</div>
+                <div class="grow"><div class="bold">一元二次方程</div><div class="muted">错因：计算错误 · 知识点：配方</div></div>
+                <div class="btn-subtle" style="color:#3F7EBB;border-color:#C8DAEF">编辑</div>
+              </div>
+              <div class="func-tabs">
+                <span class="on">版式</span><span>题目</span><span>错因</span><span>复习</span>
+              </div>
+              <div class="grid-2" style="margin-top:5px">
+                <div class="btn-subtle text-center" style="color:#D95B43;border-color:#EECAC2">✂ 裁剪</div>
+                <div class="btn-subtle text-center" style="color:#3F7EBB;border-color:#C8DAEF">◇ 知识点</div>
+                <div class="btn-subtle text-center" style="color:#B8860B;border-color:#EFDCAE">☀ 增强</div>
+                <div class="btn-subtle text-center" style="color:#B05AA5;border-color:#E9D2E7">✔ 复习</div>
+              </div>
+              <div class="muted" style="margin:10px 2px 4px">版式</div>
+              <div class="seg soft"><span>标准卡</span><span class="on">复习友好版</span><span>双栏</span></div>
+            </div>
+          </div>
+          <div class="bottom-nav">
+            <div class="nav-item"><span class="ni">📖</span>首页</div>
+            <div class="nav-item on"><span class="ni">🖨</span>打印</div>
+            <div class="nav-item"><span class="ni">👤</span>我的</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 我的页 -->
+    <div class="phone-wrap">
+      <div class="screen-title">我的 · 文具盒</div>
+      <div class="screen-desc">手账主题选择 + 红蓝笔语义</div>
+      <div class="phone">
+        <div class="screen">
+          <div class="statusbar"><span>19:45</span><span>5G</span></div>
+          <div class="content">
+            <div class="page-title">我的 <span style="color:#3F7EBB;font-size:14px">文具盒</span></div>
+            <div class="card" style="background:#FFFDF6">
+              <div class="mine-card-label">界面主题</div>
+              <div class="theme-options">
+                <div class="theme-option on"><span class="dot" style="background:#D95B43"></span><div class="grow bold">手账纸感</div><span class="muted">当前</span></div>
+                <div class="theme-option"><span class="dot" style="background:#176B5B"></span><div class="grow">墨绿极简</div></div>
+                <div class="theme-option"><span class="dot" style="background:#6C5CE7"></span><div class="grow">紫罗兰</div></div>
+              </div>
+            </div>
+            <div class="card" style="background:#FFFDF6">
+              <div class="mine-card-label">文具管理</div>
+              <div class="menu-row"><span class="ma">📡</span><div class="grow bold">打印机</div><span class="muted">Qring_5CEA</span></div>
+              <div class="menu-row"><span class="ma">🗂</span><div class="grow bold">我的模板</div><span class="muted">12 个</span></div>
+              <div class="menu-row"><span class="ma">⚙️</span><div class="grow bold">打印设置</div><span class="muted">浓度/进纸</span></div>
+            </div>
+            <div class="card" style="background:#FFFDF6">
+              <div class="mine-card-label">关于</div>
+              <div class="menu-row"><span class="ma">ℹ️</span><div class="grow bold">版本信息</div><span class="muted">1.0.0</span></div>
+              <div class="menu-row"><span class="ma">🔄</span><div class="grow bold">检查更新</div><span class="muted">最新</span></div>
+            </div>
+          </div>
+          <div class="bottom-nav">
+            <div class="nav-item"><span class="ni">📖</span>首页</div>
+            <div class="nav-item"><span class="ni">🖨</span>打印</div>
+            <div class="nav-item on"><span class="ni">👤</span>我的</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="spec-grid">
+    <div class="spec-card">
+      <h3>适合氛围</h3>
+      <ul>
+        <li>学生/家长最熟悉的“错题本”心智</li>
+        <li>使用场景天然带“纸 + 笔 + 红色批改”</li>
+        <li>容易做出亲和、有趣的差异化</li>
+      </ul>
+    </div>
+    <div class="spec-card">
+      <h3>落地改动</h3>
+      <ul>
+        <li>背景加入极淡横线 + 顶部三色笔装饰条</li>
+        <li>红笔做主操作，蓝笔做链接/订正，黄做提醒</li>
+        <li>卡片做成手账纸/便利贴质感</li>
+        <li>错题卡页可作为该风格的核心展示页</li>
+      </ul>
+    </div>
+  </div>
+</div>
+</body>
+</html>

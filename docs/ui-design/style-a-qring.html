@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>风格 A · QringPrint 紫罗兰果冻卡</title>
+<link rel="stylesheet" href="common.css">
+<style>
+  /* 风格 A：参考 QrintPrint / HarmonyOS 紫罗兰 + 彩色功能卡 */
+  :root {
+    --bg: #F4F4FA;
+    --card: #FFFFFF;
+    --text: #17151F;
+    --muted: #8B8A97;
+    --primary: #6C5CE7;
+    --primary-soft: #EEEBFF;
+    --primary-glow: rgba(108,92,231,.38);
+    --outline: #E6E4F0;
+    --divider: #ECEBF4;
+    --nav-bg: rgba(255,255,255,.94);
+    --nav-border: 1px solid #EAE8F4;
+    --seg-bg: #EEEBF7;
+    --preview-bg: #FBFBFE;
+    --preview-border: 1px dashed #D9D6EC;
+    --radius: 14px;
+    --radius-lg: 20px;
+    --radius-icon: 16px;
+    --radius-btn: 999px;
+    --card-shadow: 0 10px 28px rgba(76,60,140,.10), 0 2px 6px rgba(76,60,140,.05);
+    --card-border: 1px solid rgba(255,255,255,.8);
+    --btn-shadow: 0 10px 22px rgba(108,92,231,.30);
+    --status-bg: #F4F4FA;
+    --pill-bg: #F0EEF8;
+    --pill-text: #6A677B;
+  }
+  body {
+    background: linear-gradient(135deg,#F7F6FF 0%,#ECEBFA 50%,#FDFAFF 100%);
+  }
+  .ins a { color: #6C5CE7; }
+</style>
+</head>
+<body>
+<div class="design-page">
+  <a class="back-link" href="index.html">← 返回方案总览</a>
+  <div class="design-head">
+    <div class="eyebrow">Style A</div>
+    <h1>QringPrint 紫罗兰 · 果冻卡</h1>
+    <p>参考 <b>Thisko/QrintPrint（HarmonyOS 客户端）</b>：浅灰紫底、纯白大卡片、紫罗兰主色、圆角功能卡 + 彩色图标方块。保留当前“首页 + 打印 + 我的”三 Tab 结构，但把打印入口做成更醒目的彩色宫格，整体像现代 iOS/鸿蒙工具。</p>
+    <div class="meta">
+      <span class="chip">灵感：QrintPrint / iOS / HarmonyOS</span>
+      <span class="chip">关键词：紫罗兰 · 大圆角 · 彩色功能卡</span>
+    </div>
+    <div class="palette-row">
+      <div class="swatch"><div class="color" style="background:#6C5CE7"></div><div class="name">主色</div><div class="hex">#6C5CE7</div></div>
+      <div class="swatch"><div class="color" style="background:#EEEBFF"></div><div class="name">主色浅</div><div class="hex">#EEEBFF</div></div>
+      <div class="swatch"><div class="color" style="background:#F4F4FA"></div><div class="name">背景</div><div class="hex">#F4F4FA</div></div>
+      <div class="swatch"><div class="color" style="background:#F6B93B"></div><div class="name">图片</div><div class="hex">#F6B93B</div></div>
+      <div class="swatch"><div class="color" style="background:#7ED6A5"></div><div class="name">文字</div><div class="hex">#7ED6A5</div></div>
+      <div class="swatch"><div class="color" style="background:#6FB1E8"></div><div class="name">条码</div><div class="hex">#6FB1E8</div></div>
+    </div>
+  </div>
+
+  <div class="phones">
+    <!-- 首页 -->
+    <div class="phone-wrap">
+      <div class="screen-title">首页 · 启动台</div>
+      <div class="screen-desc">设备状态卡 + 彩色功能宫格</div>
+      <div class="phone">
+        <div class="screen">
+          <div class="statusbar"><span>21:59</span><span>5G</span></div>
+          <div class="content">
+            <div class="page-title">错题小印</div>
+            <div class="card device-card">
+              <div class="row">
+                <div class="device-icon">🖨</div>
+                <div class="grow">
+                  <h2>Qring_D6E9</h2>
+                  <div class="device-sub">已连接 · 电量 72%</div>
+                </div>
+                <div class="btn-subtle">管理</div>
+              </div>
+              <div class="device-meta">
+                <span class="mini-pill">● 电量 72%</span>
+                <span class="mini-pill">● 纸张正常</span>
+                <span class="mini-pill">● 打印中</span>
+              </div>
+            </div>
+            <div class="section-label">快速打印</div>
+            <div class="grid-2">
+              <div class="quick">
+                <div class="icon" style="background:#FDF1DA;color:#E8A626">🖼</div>
+                <b>图片打印</b><span>相册/拍照</span>
+              </div>
+              <div class="quick">
+                <div class="icon" style="background:#E3F7EA;color:#35B56D">📄</div>
+                <b>文字打印</b><span>TXT 文本</span>
+              </div>
+              <div class="quick">
+                <div class="icon" style="background:#E3EFFA;color:#4C94E0">▦</div>
+                <b>打印条码</b><span>二维码/条码</span>
+              </div>
+              <div class="quick">
+                <div class="icon" style="background:#F0E9FF;color:#7B5BE8">🧩</div>
+                <b>自定义打印</b><span>高级设置</span>
+              </div>
+            </div>
+            <div class="section-label">打印历史</div>
+            <div class="card">
+              <div class="row">
+                <div class="device-icon">🕑</div>
+                <div class="grow">
+                  <div class="bold">新建文档</div>
+                  <div class="muted">08-11 15:27 · 1 份</div>
+                </div>
+                <div class="btn-subtle">查看</div>
+              </div>
+            </div>
+          </div>
+          <div class="bottom-nav">
+            <div class="nav-item on"><span class="ni">⌂</span>首页</div>
+            <div class="nav-item"><span class="ni">▤</span>打印</div>
+            <div class="nav-item"><span class="ni">◇</span>我的</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 打印页 -->
+    <div class="phone-wrap">
+      <div class="screen-title">打印 · 图片工作台</div>
+      <div class="screen-desc">大圆角预览 + 分段控件 + 底部主操作</div>
+      <div class="phone">
+        <div class="screen">
+          <div class="statusbar"><span>21:44</span><span>5G</span></div>
+          <div class="content">
+            <div class="row">
+              <div class="page-title" style="padding:0;font-size:20px">图片打印</div>
+              <div class="grow"></div>
+              <button class="btn-primary">🖨 打印</button>
+            </div>
+            <div class="seg">
+              <span>文字</span><span class="on">图片</span><span>条码</span><span>文档</span><span>其它</span>
+            </div>
+            <div class="preview">请选择图片<br><small>可连续打印多张</small></div>
+            <div class="card">
+              <div class="row" style="margin-bottom:8px">
+                <div class="device-icon" style="background:#FDF1DA;color:#E8A626">▧</div>
+                <div class="grow"><div class="bold">IMG_2026-09-05.jpg</div><div class="muted">自动增强 · 58mm 纸宽</div></div>
+                <div class="btn-subtle">更换</div>
+              </div>
+              <div class="func-tabs">
+                <span class="on">常用</span><span>效果</span><span>排版</span><span>更多</span>
+              </div>
+              <div class="grid-2" style="margin-top:5px">
+                <div class="btn-subtle text-center">✂ 裁剪</div>
+                <div class="btn-subtle text-center">🖌 画布</div>
+                <div class="btn-subtle text-center">☀ 增强</div>
+                <div class="btn-subtle text-center">✖ 清除</div>
+              </div>
+              <div class="muted" style="margin:10px 2px 4px">旋转</div>
+              <div class="seg soft"><span class="on">0°</span><span>90°</span><span>180°</span><span>270°</span></div>
+              <div class="muted" style="margin:10px 2px 4px">打印浓度</div>
+              <div class="seg soft"><span>淡</span><span class="on">中</span><span>浓</span></div>
+            </div>
+          </div>
+          <div class="bottom-nav">
+            <div class="nav-item"><span class="ni">⌂</span>首页</div>
+            <div class="nav-item on"><span class="ni">▤</span>打印</div>
+            <div class="nav-item"><span class="ni">◇</span>我的</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 我的页 -->
+    <div class="phone-wrap">
+      <div class="screen-title">我的 · 设置</div>
+      <div class="screen-desc">跟随系统/浅色/深色，紫色胶囊选中</div>
+      <div class="phone">
+        <div class="screen">
+          <div class="statusbar"><span>21:39</span><span>5G</span></div>
+          <div class="content">
+            <div class="page-title">我的<span class="muted" style="font-size:13px;font-weight:400;margin-left:8px">My Setting</span></div>
+            <div class="card">
+              <div class="mine-card-label">显示模式</div>
+              <div class="seg">
+                <span class="on">跟随系统</span><span>浅色</span><span>深色</span>
+              </div>
+              <div class="mine-card-label" style="margin-top:14px">界面主题</div>
+              <div class="theme-options">
+                <div class="theme-option on"><span class="dot"></span><div class="grow bold">QringPrint 紫罗兰</div><span class="muted">当前</span></div>
+                <div class="theme-option"><span class="dot" style="background:#176B5B"></span><div class="grow">xyprt 墨绿</div></div>
+                <div class="theme-option"><span class="dot" style="background:#07C160"></span><div class="grow">微信风</div></div>
+              </div>
+            </div>
+            <div class="card">
+              <div class="mine-card-label">设备管理</div>
+              <div class="menu-row"><span class="ma">📡</span><div class="grow bold">打印机</div><span class="muted">Qring_D6E9</span></div>
+              <div class="menu-row"><span class="ma">🕑</span><div class="grow bold">打印历史</div><span class="muted">100 条</span></div>
+              <div class="menu-row"><span class="ma">⚙️</span><div class="grow bold">打印设置</div><span class="muted">浓度/进纸</span></div>
+            </div>
+            <div class="card">
+              <div class="mine-card-label">关于</div>
+              <div class="menu-row"><span class="ma">ℹ️</span><div class="grow bold">版本信息</div><span class="muted">1.0.0</span></div>
+            </div>
+          </div>
+          <div class="bottom-nav">
+            <div class="nav-item"><span class="ni">⌂</span>首页</div>
+            <div class="nav-item"><span class="ni">▤</span>打印</div>
+            <div class="nav-item on"><span class="ni">◇</span>我的</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="spec-grid">
+    <div class="spec-card">
+      <h3>适合氛围</h3>
+      <ul>
+        <li>有辨识度的现代工具 App</li>
+        <li>与 QrintPrint 同源，用户迁移无违和感</li>
+        <li>彩色功能卡降低“全是一个按钮”的枯燥感</li>
+      </ul>
+    </div>
+    <div class="spec-card">
+      <h3>落地改动</h3>
+      <ul>
+        <li>Design.kt 新增 UiTheme.QRING 调色板</li>
+        <li>卡片圆角 20 / 图标圆角 16 / 按钮胶囊</li>
+        <li>首页功能卡可配 4 组主题色图标</li>
+        <li>底部导航选中加紫罗兰光晕</li>
+      </ul>
+    </div>
+  </div>
+</div>
+</body>
+</html>

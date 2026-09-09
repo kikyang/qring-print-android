@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>风格 E · 热敏打印黑白墨点</title>
+<link rel="stylesheet" href="common.css">
+<style>
+  /* 风格 E：热敏打印机的“原生语言”——纸白、黑墨、点阵、等宽、虚线 */
+  :root {
+    --bg: #F4F4F0;
+    --card: #FFFFFF;
+    --text: #111111;
+    --muted: #777770;
+    --primary: #111111;
+    --primary-soft: #EDEDE8;
+    --primary-glow: rgba(0,0,0,.10);
+    --outline: #CFCFC6;
+    --divider: #E3E3DA;
+    --nav-bg: #FFFFFF;
+    --nav-border: 1px dashed #C6C6BC;
+    --seg-bg: #ECECE6;
+    --preview-bg: #FBFBF8;
+    --preview-border: 1px dashed #AEAEA5;
+    --radius: 4px;
+    --radius-lg: 6px;
+    --radius-icon: 4px;
+    --radius-btn: 4px;
+    --card-shadow: none;
+    --card-border: 1px solid #DDDDD3;
+    --btn-shadow: none;
+    --status-bg: #F4F4F0;
+    --pill-bg: #F1F1EB;
+    --pill-text: #222;
+  }
+  body {
+    background:
+      repeating-linear-gradient(90deg, transparent 0 8px, rgba(0,0,0,.03) 8px 9px),
+      #EFEFE9;
+  }
+  .design-page, .phone, .screen, .card, .preview {
+    font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, "Courier New", monospace;
+  }
+  .design-head h1 { letter-spacing: -.04em; }
+  .design-head p { font-family: ui-monospace, "Courier New", monospace; }
+  .chip { font-family: ui-monospace, monospace; border-radius: 2px; border:1px dashed #999; }
+  .swatch { border-radius: 6px; }
+  .btn-primary { border-radius: 2px; background:#111; color:#fff; box-shadow: 2px 2px 0 #333; }
+  .btn-subtle { border-radius: 2px; border:1px dashed #AAA; }
+  .device-card::after {
+    content: "";
+    display: block;
+    margin-top: 10px;
+    border-top: 2px dashed #AAA;
+  }
+  .statusbar::after {
+    content: "";
+    position:absolute; left:0; right:0; bottom:0;
+    border-bottom: 2px dashed #AAA;
+  }
+  .preview {
+    background-image: radial-gradient(rgba(0,0,0,.16) 1px, transparent 1.5px);
+    background-size: 5px 5px;
+  }
+  .mini-pill { border: 1px solid #C7C7BC; border-radius: 2px; }
+  .phone-wrap .screen-title { font-family: ui-monospace, monospace; }
+</style>
+</head>
+<body>
+<div class="design-page">
+  <a class="back-link" href="index.html">← 返回方案总览</a>
+  <div class="design-head">
+    <div class="eyebrow">Style E</div>
+    <h1>热敏打印 · 黑白墨点</h1>
+    <p>直接把“热敏打印机”的物理语言做成界面：纸白底、黑墨、点阵抖动、等宽字体、虚线分栏。像一张打印出来的工作小票/错题清单，辨识度和反差都极强。</p>
+    <div class="meta">
+      <span class="chip">灵感：热敏打印 / 点阵 / 等宽终端</span>
+      <span class="chip">关键词：墨点 · 小票 · 等宽 · 极简黑白</span>
+    </div>
+    <div class="palette-row">
+      <div class="swatch"><div class="color" style="background:#F4F4F0"></div><div class="name">纸底</div><div class="hex">#F4F4F0</div></div>
+      <div class="swatch"><div class="color" style="background:#FFFFFF"></div><div class="name">白纸</div><div class="hex">#FFFFFF</div></div>
+      <div class="swatch"><div class="color" style="background:#111111"></div><div class="name">黑墨</div><div class="hex">#111111</div></div>
+      <div class="swatch"><div class="color" style="background:#AEAEA5"></div><div class="name">灰线</div><div class="hex">#AEAEA5</div></div>
+    </div>
+  </div>
+
+  <div class="phones">
+    <!-- 首页 -->
+    <div class="phone-wrap">
+      <div class="screen-title">首页 · 打印小票</div>
+      <div class="screen-desc">等宽标题 + 小票状态卡 + 点阵入口</div>
+      <div class="phone">
+        <div class="screen">
+          <div class="statusbar"><span>09:05</span><span>5G</span></div>
+          <div class="content">
+            <div class="page-title" style="letter-spacing:-.04em">错题小印</div>
+            <div class="card device-card">
+              <div class="row">
+                <div class="device-icon">▚</div>
+                <div class="grow">
+                  <div class="bold">Qring_5CEA</div>
+                  <div class="device-sub">已连接 · 电量 75%</div>
+                </div>
+                <div class="btn-subtle">管理</div>
+              </div>
+              <div class="device-meta">
+                <span class="mini-pill">电量 75%</span>
+                <span class="mini-pill">纸张正常</span>
+                <span class="mini-pill">打印中</span>
+              </div>
+            </div>
+            <div class="section-label">▸ 开始打印</div>
+            <div class="grid-2">
+              <div class="quick">
+                <div class="icon">▤</div><b>图片</b><span>照片/题目</span>
+              </div>
+              <div class="quick">
+                <div class="icon">▥</div><b>文字</b><span>TXT 文本</span>
+              </div>
+              <div class="quick">
+                <div class="icon">▦</div><b>条码</b><span>二维码</span>
+              </div>
+              <div class="quick">
+                <div class="icon">✦</div><b>自定义</b><span>画布/模板</span>
+              </div>
+            </div>
+            <div class="card">
+              <div class="mine-card-label">最近记录</div>
+              <div class="menu-row"><span class="ma">▸</span><div class="grow bold">新建文档</div><span class="muted">08-11 15:27</span></div>
+              <div class="menu-row"><span class="ma">▸</span><div class="grow bold">错题卡</div><span class="muted">08-10 21:11</span></div>
+            </div>
+          </div>
+          <div class="bottom-nav">
+            <div class="nav-item on"><span class="ni">▣</span>首页</div>
+            <div class="nav-item"><span class="ni">▤</span>打印</div>
+            <div class="nav-item"><span class="ni">▥</span>我的</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 打印页 -->
+    <div class="phone-wrap">
+      <div class="screen-title">打印 · 点阵预览</div>
+      <div class="screen-desc">实时点阵预览 + 黑白参数</div>
+      <div class="phone">
+        <div class="screen">
+          <div class="statusbar"><span>09:05</span><span>5G</span></div>
+          <div class="content">
+            <div class="row">
+              <div class="page-title" style="padding:0;font-size:20px;letter-spacing:-.04em">图片打印</div>
+              <div class="grow"></div>
+              <button class="btn-primary">▸ 打印</button>
+            </div>
+            <div class="seg">
+              <span>文字</span><span class="on">图片</span><span>条码</span><span>文档</span><span>其它</span>
+            </div>
+            <div class="preview">
+              <span style="font-size:36px">▚▞▚</span>
+              <span style="margin-top:6px">点阵预览 384px</span>
+              <small>选择图片后自动抖动</small>
+            </div>
+            <div class="card">
+              <div class="row" style="margin-bottom:8px">
+                <div class="device-icon" style="background:#EDEDE8;color:#111">▧</div>
+                <div class="grow"><div class="bold">IMG_2026-09-05.jpg</div><div class="muted">阈值 153 · 抖动 100%</div></div>
+                <div class="btn-subtle">更换</div>
+              </div>
+              <div class="func-tabs">
+                <span class="on">常用</span><span>效果</span><span>排版</span><span>更多</span>
+              </div>
+              <div class="grid-2" style="margin-top:5px">
+                <div class="btn-subtle text-center">✂ 裁剪</div>
+                <div class="btn-subtle text-center">▦ 画布</div>
+                <div class="btn-subtle text-center">◉ 增强</div>
+                <div class="btn-subtle text-center">✕ 清除</div>
+              </div>
+              <div class="muted" style="margin:10px 2px 4px">打印浓度</div>
+              <div class="seg soft"><span>淡</span><span class="on">中</span><span>浓</span></div>
+            </div>
+          </div>
+          <div class="bottom-nav">
+            <div class="nav-item"><span class="ni">▣</span>首页</div>
+            <div class="nav-item on"><span class="ni">▤</span>打印</div>
+            <div class="nav-item"><span class="ni">▥</span>我的</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 我的页 -->
+    <div class="phone-wrap">
+      <div class="screen-title">我的 · 参数设置</div>
+      <div class="screen-desc">等宽列表 + 虚线分隔</div>
+      <div class="phone">
+        <div class="screen">
+          <div class="statusbar"><span>09:05</span><span>5G</span></div>
+          <div class="content">
+            <div class="page-title" style="letter-spacing:-.04em">我的</div>
+            <div class="card">
+              <div class="mine-card-label">界面主题</div>
+              <div class="theme-options">
+                <div class="theme-option on"><span class="dot" style="background:#111"></span><div class="grow bold">热敏黑白</div><span class="muted">当前</span></div>
+                <div class="theme-option"><span class="dot" style="background:#176B5B"></span><div class="grow">墨绿</div></div>
+                <div class="theme-option"><span class="dot" style="background:#6C5CE7"></span><div class="grow">紫罗兰</div></div>
+              </div>
+            </div>
+            <div class="card">
+              <div class="mine-card-label">设备</div>
+              <div class="menu-row"><span class="ma">▸</span><div class="grow bold">打印机</div><span class="muted">Qring_5CEA</span></div>
+              <div class="menu-row"><span class="ma">▸</span><div class="grow bold">打印历史</div><span class="muted">100 条</span></div>
+              <div class="menu-row"><span class="ma">▸</span><div class="grow bold">打印设置</div><span class="muted">浓度/进纸</span></div>
+            </div>
+            <div class="card">
+              <div class="mine-card-label">关于</div>
+              <div class="menu-row"><span class="ma">▸</span><div class="grow bold">版本信息</div><span class="muted">1.0.0</span></div>
+            </div>
+          </div>
+          <div class="bottom-nav">
+            <div class="nav-item"><span class="ni">▣</span>首页</div>
+            <div class="nav-item"><span class="ni">▤</span>打印</div>
+            <div class="nav-item on"><span class="ni">▥</span>我的</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="spec-grid">
+    <div class="spec-card">
+      <h3>适合氛围</h3>
+      <ul>
+        <li>与“热敏打印”产品属性天然一体</li>
+        <li>黑白点阵风格几乎不会过时</li>
+        <li>差异化最大，一眼能认出是打印工具</li>
+      </ul>
+    </div>
+    <div class="spec-card">
+      <h3>落地改动</h3>
+      <ul>
+        <li>新增 UiTheme.THERMAL：黑白 + 等宽字体</li>
+        <li>卡片用小方角、虚线、点阵纹理</li>
+        <li>预览区直接用打印点阵效果作背景</li>
+        <li>按钮用硬投影小方角，强调“打印”感</li>
+      </ul>
+    </div>
+  </div>
+</div>
+</body>
+</html>

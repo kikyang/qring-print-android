@@ -630,15 +630,12 @@ class MainActivity : Activity() {
             isClickable = true
             setOnClickListener { action() }
         }
-        // 图标容器：仿喵喵机 = 淡蓝大圆底（恢复初始版彩色圆底），其余主题白底圆角容器
+        // 图标容器：白底圆角容器（主题色通过图标本身/选中态体现）
         val iconWrap = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             setPadding(Design.dp(10), Design.dp(10), Design.dp(10), Design.dp(10))
-            background = if (Design.theme == UiTheme.MIAOMIAO)
-                Design.rounded(Design.PRIMARY_CONTAINER, Design.dp(32).toFloat())
-            else
-                Design.rounded(0xFFFFFFFF.toInt(), Design.dp(18).toFloat())
+            background = Design.rounded(0xFFFFFFFF.toInt(), Design.dp(18).toFloat())
         }
         iconWrap.addView(iconView())
         item.addView(iconWrap)
@@ -2413,20 +2410,54 @@ class MainActivity : Activity() {
             })
         })
 
-        // UI 主题（2026-08-18 加）：微信风 / xyprt 简洁风 / 仿喵喵机蓝白风
+        // UI 主题（v0.7.6 起 8 套，改为竖向列表选择）
         page.addView(Design.card {
             addView(Design.sectionTitle("界面主题"))
             addView(Design.caption("选择你喜欢的界面风格，立即生效"))
-            val themeGroup = Design.segmentGroup(
-                UiTheme.entries.map { it.label to it },
-                defaultIndex = UiTheme.entries.indexOf(Settings.uiTheme),
-            ) { i ->
-                val t = UiTheme.entries[i]
-                Settings.uiTheme = t
-                Design.theme = t
-                recreate()
+            val themeList = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL }
+            UiTheme.entries.forEach { t ->
+                val selected = t == Settings.uiTheme
+                val row = LinearLayout(this@MainActivity).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(Design.dp(10), Design.dp(8), Design.dp(10), Design.dp(8))
+                    background = if (selected)
+                        Design.rounded(Design.PRIMARY_CONTAINER, Design.RADIUS_SM, Design.PRIMARY, 2)
+                    else
+                        Design.rounded(Design.SURFACE_CONTAINER, Design.RADIUS_SM)
+                    isClickable = true
+                    setOnClickListener {
+                        if (Settings.uiTheme != t) {
+                            Settings.uiTheme = t
+                            Design.theme = t
+                            recreate()
+                        }
+                    }
+                }
+                val dot = View(this@MainActivity).apply {
+                    background = Design.rounded(Design.themeAccent(t), Design.dp(10).toFloat())
+                }
+                row.addView(dot, LinearLayout.LayoutParams(Design.dp(20), Design.dp(20)).apply {
+                    marginEnd = Design.dp(10)
+                })
+                row.addView(TextView(this@MainActivity).apply {
+                    text = t.label
+                    textSize = 13.5f
+                    setTextColor(Design.ON_SURFACE)
+                    typeface = if (selected) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
+                }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                row.addView(TextView(this@MainActivity).apply {
+                    text = if (selected) "✓" else ""
+                    textSize = 13.5f
+                    setTextColor(Design.PRIMARY)
+                    typeface = Typeface.DEFAULT_BOLD
+                    gravity = Gravity.END
+                })
+                themeList.addView(row, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                    topMargin = Design.dp(4)
+                })
             }
-            addView(themeGroup)
+            addView(themeList)
         })
 
         page.addView(Design.card {

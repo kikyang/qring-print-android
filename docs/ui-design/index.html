@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>错题小印 · 界面设计方案</title>
+<link rel="stylesheet" href="common.css">
+<style>
+  .style-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(310px, 1fr));
+    gap: 18px;
+    margin-top: 26px;
+  }
+  .style-card {
+    display: block;
+    background: #fff;
+    border-radius: 22px;
+    padding: 16px;
+    text-decoration: none;
+    color: inherit;
+    box-shadow: 0 8px 30px rgba(0,0,0,.08);
+    border: 1px solid rgba(0,0,0,.04);
+    transition: transform .15s ease, box-shadow .15s ease;
+  }
+  .style-card:hover { transform: translateY(-4px); box-shadow: 0 14px 34px rgba(0,0,0,.12); }
+  .style-thumb {
+    height: 180px;
+    border-radius: 16px;
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 16px;
+    font-weight: 800;
+  }
+  .style-card .name { font-size: 19px; font-weight: 800; margin-top: 12px; }
+  .style-card .desc { font-size: 13px; color: #666; line-height: 1.6; margin-top: 5px; }
+  .style-card .tagrow { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+  .tag { background: #F2F3F7; border-radius: 999px; padding: 5px 9px; font-size: 11px; color: #555; font-weight: 600; }
+  .thumb-a { background: linear-gradient(135deg,#6C5CE7 0%,#A78BFA 100%); }
+  .thumb-b { background: linear-gradient(135deg,#176B5B 0%,#4E9F8E 100%); }
+  .thumb-c { background: linear-gradient(135deg,#07080A 0%,#1B1C1E 100%); }
+  .thumb-d { background: linear-gradient(135deg,#F1E7D5 0%,#E8D5AE 100%); color:#7A5230; }
+  .thumb-e { background: linear-gradient(135deg,#FFFFFF 0%,#DDDDD3 100%); color:#111; }
+  .thumb-f { background: linear-gradient(135deg,#FAF9F7 0%,#F3D9A8 100%); color:#5A4322; }
+  .thumb-g { background: linear-gradient(135deg,#1D1D1F 0%,#000 100%); color:#fff; }
+  .thumb-h { background: linear-gradient(135deg,#A9D3FF 0%,#FFD9E8 60%,#D6C7FF 100%); color:#14213D; }
+  .mini-phone {
+    width: 80px; height: 136px; border-radius: 12px; background: rgba(255,255,255,.16);
+    border: 1px solid rgba(255,255,255,.25);
+    box-shadow: 0 12px 20px rgba(0,0,0,.2);
+    padding: 8px 6px;
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .mini-phone .mini-bar { height: 4px; border-radius: 2px; background: rgba(255,255,255,.8); }
+  .mini-phone .mini-bar.short { width: 55%; }
+  .mini-phone .mini-card { flex: 1; background: rgba(255,255,255,.75); border-radius: 5px; }
+  .mini-phone .mini-nav { height: 9px; background: rgba(0,0,0,.18); border-radius: 4px; }
+</style>
+</head>
+<body>
+<div class="design-page">
+  <div class="design-head">
+    <div class="eyebrow">UI Design Proposal · 2026-09-05</div>
+    <h1>错题小印 · 界面设计方案</h1>
+    <p>基于现有 v0.7.5 的「微信风 / xyprt 简洁风 / 喵喵机蓝白风」以及当前三 Tab + 二级打印 Tab 结构，参考 xyprt_android、QrintPrint、Linear/Raycast、横线笔记本、Clay、Apple、iOS Liquid Glass 等优秀相关项目，提出 8 套差异更大的风格。每套都包含首页 / 打印 / 我的三个主要页面预览。</p>
+    <div class="meta">
+      <span class="chip">📱 8 套风格</span>
+      <span class="chip">🎨 每套含设计令牌</span>
+      <span class="chip">🔧 后续可映射到 Design.kt</span>
+    </div>
+  </div>
+
+  <div class="style-grid">
+    <a class="style-card" href="style-a-qring.html">
+      <div class="style-thumb thumb-a">
+        <div class="mini-phone">
+          <div class="mini-bar short"></div>
+          <div class="mini-card"></div>
+          <div class="mini-bar"></div>
+          <div class="mini-card"></div>
+          <div class="mini-nav"></div>
+        </div>
+      </div>
+      <div class="name">A · QringPrint 紫罗兰果冻卡</div>
+      <div class="desc">参考 QrintPrint / HarmonyOS：浅紫底 + 白卡 + 彩色宫格 + 紫罗兰主色。最有“现代工具 App”辨识度。</div>
+      <div class="tagrow"><span class="tag">紫色主色</span><span class="tag">大圆角</span><span class="tag">彩色功能卡</span></div>
+    </a>
+
+    <a class="style-card" href="style-b-xyprt.html">
+      <div class="style-thumb thumb-b">
+        <div class="mini-phone">
+          <div class="mini-bar short"></div>
+          <div class="mini-card"></div>
+          <div class="mini-bar"></div>
+          <div class="mini-card"></div>
+          <div class="mini-nav"></div>
+        </div>
+      </div>
+      <div class="name">B · xyprt 墨绿纸感极简</div>
+      <div class="desc">参考 xyprt_android 上游：纸白底 + 墨绿 + 胶囊按钮 + 大留白。从现有简洁风平滑升级，最耐看。</div>
+      <div class="tagrow"><span class="tag">墨绿</span><span class="tag">纸感</span><span class="tag">极简</span></div>
+    </a>
+
+    <a class="style-card" href="style-c-linear.html">
+      <div class="style-thumb thumb-c">
+        <div class="mini-phone">
+          <div class="mini-bar short"></div>
+          <div class="mini-card"></div>
+          <div class="mini-bar"></div>
+          <div class="mini-card"></div>
+          <div class="mini-nav"></div>
+        </div>
+      </div>
+      <div class="name">C · Linear/Raycast 暗色效能</div>
+      <div class="desc">参考 Linear、Raycast：近黑蓝底 + 双重描边 + 蓝色交互。精密仪器般的高级暗色工具感。</div>
+      <div class="tagrow"><span class="tag">暗色</span><span class="tag">内高光</span><span class="tag">蓝交互</span></div>
+    </a>
+
+    <a class="style-card" href="style-d-notebook.html">
+      <div class="style-thumb thumb-d">
+        <div class="mini-phone">
+          <div class="mini-bar short"></div>
+          <div class="mini-card"></div>
+          <div class="mini-bar"></div>
+          <div class="mini-card"></div>
+          <div class="mini-nav"></div>
+        </div>
+      </div>
+      <div class="name">D · 错题本手账纸感</div>
+      <div class="desc">参考横线笔记本/手账：暖米色纸 + 横线 + 红蓝批改笔。最贴“错题本”情感，亲和力强。</div>
+      <div class="tagrow"><span class="tag">纸感</span><span class="tag">红蓝笔</span><span class="tag">文具</span></div>
+    </a>
+
+    <a class="style-card" href="style-e-thermal.html">
+      <div class="style-thumb thumb-e">
+        <div class="mini-phone">
+          <div class="mini-bar short"></div>
+          <div class="mini-card"></div>
+          <div class="mini-bar"></div>
+          <div class="mini-card"></div>
+          <div class="mini-nav"></div>
+        </div>
+      </div>
+      <div class="name">E · 热敏打印黑白墨点</div>
+      <div class="desc">把打印机的物理语言做成界面：纸白 + 黑墨 + 点阵 + 等宽字体 + 虚线小票。极强辨识度。</div>
+      <div class="tagrow"><span class="tag">黑白</span><span class="tag">点阵</span><span class="tag">等宽</span></div>
+    </a>
+
+    <a class="style-card" href="style-f-clay.html">
+      <div class="style-thumb thumb-f">
+        <div class="mini-phone">
+          <div class="mini-bar short"></div>
+          <div class="mini-card"></div>
+          <div class="mini-bar"></div>
+          <div class="mini-card"></div>
+          <div class="mini-nav"></div>
+        </div>
+      </div>
+      <div class="name">F · Clay 奶油多彩手工纸</div>
+      <div class="desc">参考 Clay：奶油底 + 燕麦边 + 果汁色块 + 硬投影 + 大圆角。多巴胺文具风，最有温度。</div>
+      <div class="tagrow"><span class="tag">奶油</span><span class="tag">多巴胺</span><span class="tag">手工纸</span></div>
+    </a>
+
+    <a class="style-card" href="style-g-apple.html">
+      <div class="style-thumb thumb-g">
+        <div class="mini-phone">
+          <div class="mini-bar short"></div>
+          <div class="mini-card"></div>
+          <div class="mini-bar"></div>
+          <div class="mini-card"></div>
+          <div class="mini-nav"></div>
+        </div>
+      </div>
+      <div class="name">G · Apple Bento 黑白极简</div>
+      <div class="desc">参考 Apple：黑白二分 + Apple Blue + Bento 宫格 + 负字距。极致克制的高级感。</div>
+      <div class="tagrow"><span class="tag">Apple</span><span class="tag">Bento</span><span class="tag">黑白</span></div>
+    </a>
+
+    <a class="style-card" href="style-h-glass.html">
+      <div class="style-thumb thumb-h">
+        <div class="mini-phone">
+          <div class="mini-bar short"></div>
+          <div class="mini-card"></div>
+          <div class="mini-bar"></div>
+          <div class="mini-card"></div>
+          <div class="mini-nav"></div>
+        </div>
+      </div>
+      <div class="name">H · 玻璃拟态 Liquid Glass</div>
+      <div class="desc">参考 iOS Liquid Glass：渐变背景 + 半透明磨砂卡 + 高光描边。科技感强，适合宣传展示。</div>
+      <div class="tagrow"><span class="tag">磨砂</span><span class="tag">玻璃</span><span class="tag">渐变</span></div>
+    </a>
+  </div>
+
+  <div style="margin-top:40px;padding:18px 20px;background:#fff;border-radius:18px;box-shadow:0 4px 18px rgba(0,0,0,.06);">
+    <h3 style="font-size:17px;margin-bottom:8px">建议选择方式</h3>
+    <p style="font-size:14px;color:#555;line-height:1.7">先点开每个方案看 <b>首页 / 打印 / 我的</b> 三屏，重点比较“主色、按钮形状、卡片圆角、是否想要彩色/暗色”。选好后我可以把对应方案落成 <code>Design.kt</code> 中新主题（比如 <code>UiTheme.QRING</code>），再逐步接到现有页面。</p>
+  </div>
+</div>
+</body>
+</html>

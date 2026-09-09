@@ -20,12 +20,16 @@
 
 ## 下载 APK
 
-最新版见 [Releases](https://github.com/kikyang/qring-print-android/releases)（v0.7.5，约 1.0MB，需 Android 13+）。
+最新版见 [Releases](https://github.com/kikyang/qring-print-android/releases)（v0.7.6，约 1.0MB，需 Android 13+）。
 应用内「我的 → 关于 → 检查更新」可直接升级到新版本（检查走 jsDelivr，国内网络可用；
 发版后 2-3 小时内新版可能尚未被收录，属正常延迟）。
 
 ## 更新日志
 
+- **v0.7.6（2026-09-05）**：**界面主题改为 8 套差异化风格**（移除旧微信风/简洁风/蓝白风）：
+  **紫罗兰 / 墨绿纸感 / 暗色效能 / 手账纸感 / 热敏黑白 / 奶油多彩 / Apple Bento / 玻璃拟态**；
+  我的页主题选择改为竖向列表（色卡 + 名称 + 勾选态，选完立即生效）；
+  设计稿见 `docs/ui-design/`（含 8 套新风格 HTML 预览与整页截图）；198 例测试全过
 - **v0.7.5（2026-09-01）**：**条码扩至 13 种 + 输入清洗/校验位重算**——条码从 QR + 7 种一维码
   扩到 zxing 可写全部 **13 种**（新增 Code93 / UPC-E / DataMatrix / Aztec / PDF-417）；条码输入清洗
   （EAN/UPC 仅留数字并核验 mod-10 校验位、ITF 奇数自动补前导 0、Code39/93 转大写、Codabar 去空白）
@@ -87,13 +91,12 @@
 |---|---|---|
 | ![条码](screenshots/barcode_v075.png) | ![文档](screenshots/doc_v073.png) | ![其它](screenshots/other_v073.png) |
 
-### 三种界面主题（v0.7.3 起，按钮/圆角/选中态随主题变化）
+### 界面主题（v0.7.6 起 8 套可切换）
 
-| 微信风 | xyprt 简洁风 | 喵喵机蓝白风 |
-|---|---|---|
-| ![微信风](screenshots/theme_wechat_v073.png) | ![简洁风](screenshots/theme_xyprt_v073.png) | ![蓝白风](screenshots/theme_miaomiao_v073.png) |
+**紫罗兰** · **墨绿纸感** · **暗色效能** · **手账纸感** · **热敏黑白** · **奶油多彩** · **Apple Bento** · **玻璃拟态**
 
-> 截图取自 Android 13（小米 24122RKC7C），内容为默认空状态；为避免泄露个人设备信息，「我的」页（含蓝牙配对列表 / MAC 地址）不放预览。
+完整设计稿与预览图见 `docs/ui-design/`（`index.html` + `previews/a.png` ~ `h.png`）。
+截图取自 Android 13（小米 24122RKC7C），内容为默认空状态；为避免泄露个人设备信息，「我的」页（含蓝牙配对列表 / MAC 地址）不放预览。
 
 ## 功能
 
@@ -140,8 +143,8 @@
 - 调试台（藏于「我的 → 关于」）：收发 hex 日志、原始命令
 
 ### UI
-- **三种界面主题可选**（v0.7.3 起差异化）：微信风 / xyprt 简洁风 / 喵喵机蓝白风，
-  按钮、圆角、选中态随主题变化，不再只是换色
+- **8 套界面主题可选**（v0.7.6 起）：紫罗兰 / 墨绿纸感 / 暗色效能 / 手账纸感 / 热敏黑白 / 奶油多彩 / Apple Bento / 玻璃拟态。
+  我的页用竖向列表选择（色卡 + 名称 + 勾选态），按钮、圆角、文字、卡片随主题变化
 - 微信小程序风格（灰底白卡 #F7F7F7/#FFFFFF、微信绿 #07C160、8px 圆角、线性图标），
   支持系统深色模式
 - 底部三 Tab：首页（设备状态 + 快捷入口：开始打印 / 打印历史 + 使用提示，v0.6 分工）/
@@ -247,7 +250,7 @@ BLE 传输：1M 像素光栅 ≈ 125KB 数据，按 32B/包 × 80ms 节奏传输
 │       ├── HistoryStore.kt / HistoryActivity.kt  # 打印历史（无损光栅重打）
 │       ├── Settings.kt               # 打印设置持久化（浓度/走纸/阈值等）
 │       ├── DebugActivity.kt          # 调试台（收发 hex 日志/原始命令）
-│       ├── Design.kt                 # 微信风设计系统（含线性图标）
+│       ├── Design.kt                 # 8 套主题设计系统（含线性图标）
 │       └── MainActivity.kt           # 三 Tab 主界面
 │   └── app/src/test/java/com/qring/print/  # 198 例测试
 │       ├── QringProtocolTest.kt      # 协议字节/状态位/指令构造（15 例）

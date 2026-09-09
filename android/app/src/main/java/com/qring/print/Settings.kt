@@ -112,11 +112,11 @@ object Settings {
     /** 读取某内容类型的编辑页状态快照；无则 null（首启/旧版本） */
     fun loadContentPref(type: String): String? = p().getString("content_pref_$type", null)
 
-    // ── UI 主题（2026-08-18 加）：微信风 / xyprt 简洁风 / 仿喵喵机蓝白风 ──
+    // ── UI 主题（v0.7.6 起）：8 套差异化风格；旧主题名解析失败自动回退默认墨绿纸感 ──
 
     var uiTheme: UiTheme
-        get() = runCatching { UiTheme.valueOf(p().getString(KEY_UI_THEME, null) ?: "WECHAT") }
-            .getOrDefault(UiTheme.WECHAT)
+        get() = runCatching { UiTheme.valueOf(p().getString(KEY_UI_THEME, null) ?: "PAPER") }
+            .getOrDefault(UiTheme.PAPER)
         set(v) = p().edit().putString(KEY_UI_THEME, v.name).apply()
 
     // ── 更新说明（2026-08-17 加）：上次运行版本 ──
