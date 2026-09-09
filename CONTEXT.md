@@ -11,6 +11,7 @@
 - 待办：`docs\待办事项清单.md`；上游巡检报告：`docs\upstream-audit-*.md`
 - 代码：`android\`（Kotlin App）+ `client\`；发版推送 main + tag + GitHub Release
 - OTA：三源（jsDelivr 版本列表 / `@main/version.json` / GitHub API）取最高版本，下载固定 `@v{tag}` 路径；升级说明弹窗：`ReleaseNotes.LOG` 顶部须新增当前版本说明（与 version.json notes 同步）
+  - 发版后若 `@main/version.json` 仍返回旧版本（jsDelivr 分支指针缓存，仓库未装 webhook），可主动 purge：`https://purge.jsdelivr.net/gh/kikyang/qring-print-android@main/version.json`（2026-09-09 实测：purge 后立即返回新版本）
 - **发版推送的备用通道（2026-09-09 实测，重要）**：本机 `github.com:443` 会间歇不通（`Connection reset` / `Could not connect`），但 `api.github.com` / `codeload` / `objects.githubusercontent.com` 可达。此时 `git push` 全失败，**而 `gh release create` 仍会成功并在「旧 main」上自动建 tag**（危险：jsDelivr `@v{tag}` 会取到旧文件）→ 必须核对 tag 指向。推送改用 **GitHub Git Data API** 精确重建提交：
   1. 每个变更文件：`cmd /c "git -C <repo> cat-file blob <sha> > f.bin"`（**必须 cmd 重定向**，PowerShell `>` 会 CRLF 化）→ base64 → `POST /git/blobs`，校验返回 SHA 与本地一致；
   2. `POST /git/trees`（`base_tree` = 父提交 tree）→ 校验 tree SHA 与本地一致；
