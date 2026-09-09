@@ -2,7 +2,7 @@
 
 > 给人类看的架构文档：不解释每一行代码，而是讲清楚"这套系统是怎么拼起来的、每个部件为什么存在"。
 > 读完本文你应该能回答：一条错题从手机屏幕到热敏纸，中间经历了什么？
-> 最近同步：v0.7.6（2026-09-09）。
+> 最近同步：v0.7.7（2026-09-09）。
 
 ---
 
@@ -209,7 +209,7 @@ v0.7.6 起确认对话框把「预览图 + 确认条」放进 ScrollView，且�
 | 文档解析竞态防护 | 新任务取消旧协程（大文件晚完成会覆盖新结果），CancellationException 不吞 |
 | BLE 分包 + 节奏控制 | 96B/包 + 40ms 间隔，防丢包；SPP 1024B/块 + 1ms |
 | 三通道共享打印时序 | PrintJobRunner 统一编排，BLE/SPP/FakePrinter 三通道跑同一份代码——实物联调只剩 GATT 写 + 热敏头物理两个未知量 |
-| **自动化测试（201 例）** | `gradle runUnitTests`：协议（15）/算法（15）/模板·历史·设置（13）/Robolectric 界面（20）/虚拟打印机引擎（21）/端到端（15）/性能基准（3）；其余为 v0.7.x 分批补充——图片增强·变换·裁剪、Markdown、PPT/公式排版、批量打印（CSV/XLSX/模板）、函数图像、OTA 更新说明、条码 13 种与校验/清洗、**抖动蛇形扫描金标准 + 确认对话框可滚动（issue #5 防回归）**。注意：Gradle Test worker 在中文路径下 classpath 失效，用 JavaExec 任务绕开（见 README） |
+| **自动化测试（210 例）** | `gradle runUnitTests`：协议（15）/算法（15）/模板·历史·设置（13）/Robolectric 界面（20）/虚拟打印机引擎（21）/端到端（15）/性能基准（3）；其余为 v0.7.x 分批补充——图片增强·变换·裁剪、Markdown、PPT/公式排版、批量打印（CSV/XLSX/模板）、函数图像、OTA 更新说明与**多源择优（UpdateManagerTest 9 例）**、条码 13 种与校验/清洗、**抖动蛇形扫描金标准 + 确认对话框可滚动（issue #5 防回归）**。注意：Gradle Test worker 在中文路径下 classpath 失效，用 JavaExec 任务绕开（见 README） |
 | **R8 瘦身** | release 开 minify（AGP 8.5.2），APK 6.4MB → 0.87MB（v0.7.2）→ ~1.0MB（v0.7.5，新增条码码制/批量/函数图后略增）；zxing 自带 consumer rules，mapping 验证功能类全保留 |
 
 ### 6.1 OTA 检查更新（v0.5.2 起）
@@ -218,14 +218,17 @@ v0.7.6 起确认对话框把「预览图 + 确认条」放进 ScrollView，且�
 
 ```
 我的 → 关于 → 检查更新
-  → jsDelivr data API（版本列表，主源；新 tag 收录滞后约 2-3h，属正常）
-      → 拿最新版本号 → 构造 jsDelivr CDN @v{版本} 下载 URL
+  → 三个源各自 best-effort 取回并解析成候选（v0.7.7 起）
+      1) jsDelivr 版本列表 data API（索引会长期滞后，实测 0.7.5/0.7.6 多日未收录）
+      2) 仓库内 @main/version.json（发版后秒级生效，实际主力）
+      3) GitHub API releases/latest（海外，通常不通）
+  → 按版本号取**最高**的那个候选（不再「谁先成功用谁」）
+  → 构造 jsDelivr CDN @v{版本} 下载 URL
   → 下载 APK（@v tag 路径，tag 不可变 + 冷缓存秒级生效，无滞后）
   → FileProvider 触发系统安装
-  fallback：仓库 version.json → GitHub API（海外）
 ```
 
-发版流程固定为：bump 版本 → 测试 → 构建 → **APK 提交进仓库 `releases/`（.gitignore 加例外）+ version.json 更新** → push → gh release → 微信推送。实测教训：jsDelivr data API 的 tag 索引和 @main 分支指针缓存都不可靠（purge 不掉），**下载必须走 @v{tag} 路径**。
+发版流程固定为：bump 版本 → 测试 → 构建 → **APK 提交进仓库 `releases/`（.gitignore 加例外）+ version.json 更新** → push → tag → gh release → 微信推送。实测教训：jsDelivr data API 的**版本列表索引**与 @main 分支指针缓存都不可靠（purge 不掉）——所以**检查要多源取最高、下载必须走 @v{tag} 路径**。
 
 **安装权限（v0.6.3）**：Android 13+ 装 APK 需 `REQUEST_INSTALL_PACKAGES` 权限 +
 用户授权「允许安装未知应用」；未授权自动跳系统设置页引导。0.6.1/0.6.2 存量用户
@@ -281,7 +284,7 @@ android/app/src/main/java/com/qring/print/
 ├── FakePrinterConnection.kt  # 虚拟打印机连接（PrinterConnection 实现，测试注入）
 └── MainActivity.kt           # 主界面：三 Tab（首页/打印/我的）+ 全部交互
 
-test/ 目录（201 例，`gradle runUnitTests`）：
+test/ 目录（210 例，`gradle runUnitTests`）：
 ├── QringProtocolTest.kt      # 协议字节/状态位/指令构造（15 例）
 ├── DitherTest.kt / CannyTest.kt  # 抖动/边缘检测算法（15 例，含蛇形扫描金标准）
 ├── TemplateBuilderTest.kt / HistoryStoreTest.kt / SettingsTest.kt  # 模板/历史/设置（13 例）
@@ -295,6 +298,7 @@ test/ 目录（201 例，`gradle runUnitTests`）：
 ├── CsvTableParserTest.kt / XlsxTableExtractorTest.kt / BatchTemplateTest.kt  # 批量打印（v0.7.4）
 ├── ExpressionEvaluatorTest.kt / FunctionGraphTest.kt  # 函数图像（v0.7.4）
 ├── ReleaseNotesTest.kt       # OTA 更新说明（v0.7.1）
+├── UpdateManagerTest.kt      # OTA 多源解析 + 取最高版本（9 例，v0.7.7）
 └── BarcodeGeneratorTest.kt   # 条码 13 种 + 校验/清洗（v0.7.5）
 ```
 
@@ -311,7 +315,7 @@ test/ 目录（201 例，`gradle runUnitTests`）：
 - 浓度范围 X1 是 0~2（其他机型可能不同，如 Windows 版提到 0~7）
 - 老格式 .doc/.xls 提取是简化实现（.doc 复杂分片/文本框不提取；.xls 只取字符串表不还原行列），复杂文档建议转存 docx/xlsx
 - 打印头电流限制导致全黑大块显色偏淡是硬件特性，非软件可完全修复
-- **OTA 的 jsDelivr 收录延迟**：发版后 2-3 小时内 App 检查更新可能仍提示已是最新（data API 收录滞后，见 6.1）
+- **OTA 检查的多源择优（v0.7.7）**：jsDelivr 的**版本列表索引**会长期滞后（实测 v0.7.5 发布 8 天后、v0.7.6 当天均未收录，而 `@v{version}` 显式路径一直正常），旧实现「谁先成功用谁」且把该列表排第一 → 新版本被误判成「已是最新」。现三源都取、按版本号取最高。
 - Robolectric 的运行时 assets 加载在 AGP 8.5 + Robolectric 4.11 下有兼容问题（FileNotFound）——
   图标类测试走文件系统断言绕开；升级 Robolectric 后可改回运行时断言
 - 官方 App 生态已死，本客户端是社区替代方案，与学科网无关联

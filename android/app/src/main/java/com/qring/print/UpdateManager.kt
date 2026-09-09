@@ -34,11 +34,12 @@ object UpdateManager {
     private const val API_BASE = "https://api.github.com/repos/$GITHUB_OWNER/$GITHUB_REPO"
 
     // 2026-08-12：国内手机直连 api.github.com 不通（桌面有代理可用，App 没有）→
-    // 检查改走 jsDelivr（国内可达）。注意：jsDelivr data API 的 tag 列表索引缓存滞后
-    // 可达数小时（实测 2h+ 未同步新 tag）——所以用仓库内 version.json 做主源：
-    // 发版时更新 version.json + APK 提交进 releases/，@main 路径缓存实测 20 秒内生效。
-    // 下载走 jsDelivr CDN @v{version} tag 路径（tag 不可变，永久缓存正确）。
-    // data API 与 GitHub API 仅作 fallback。
+    // 检查改走 jsDelivr（国内可达）。
+    // 2026-09-09（#29）：**三个源都取、按版本号取最大**，不再「谁先成功用谁」——
+    // 实测 jsDelivr data API 的版本列表索引会长期滞后（v0.7.5 发布 8 天后仍未收录、
+    // v0.7.6 当天也未收录，而 @v{version} 显式路径一直 200），它原本是第一优先级，
+    // 导致新版本被误判成「已是最新」。@main/version.json 实测发版后秒级生效，是主力源。
+    // 下载一律走 jsDelivr CDN @v{version} tag 路径（tag 不可变，永久缓存正确）。
     private const val JSDELIVR_VERSION_URL =
         "https://cdn.jsdelivr.net/gh/$GITHUB_OWNER/$GITHUB_REPO@main/version.json"
     private const val JSDELIVR_DATA_URL = "https://data.jsdelivr.com/v1/packages/gh/$GITHUB_OWNER/$GITHUB_REPO"
@@ -65,62 +66,79 @@ object UpdateManager {
             val current = runCatching {
                 activity.packageManager.getPackageInfo(activity.packageName, 0).versionName
             }.getOrDefault("0.0.0")
-            // 源顺序（2026-08-12 实测结论）：
-            // 1) data API 版本列表——收录新 tag 滞后约 2-3h，但收录后版本与下载都正确；
-            //    @main/version.json 分支指针缓存 purge 不掉（更不可靠）→ 降为 fallback
-            // 2) @main/version.json（分支指针缓存可能滞后）
-            // 3) GitHub API（海外，国内不通）
-            // 下载一律走 @v{version} tag 路径——tag 不可变、冷缓存秒级生效，无滞后问题。
-            val info = withContext(Dispatchers.IO) {
-                runCatching { httpGet(JSDELIVR_DATA_URL) }.getOrNull()
-                    ?: runCatching { httpGet(JSDELIVR_VERSION_URL) }.getOrNull()
-                    ?: runCatching { httpGet("$API_BASE/releases/latest") }.getOrNull()
-                // 三个源都失败 → null → 网络异常提示
-            } ?: run {
+            // 多源取值（2026-09-09 #29 修）：三个源各自 best-effort 取回并解析成候选，
+            // 再按版本号取**最大**——不能只看第一个成功的源。
+            // 背景：jsDelivr data API 的版本列表索引会长期滞后（实测 v0.7.5 发布 8 天后、
+            // v0.7.6 发布当天都没被收录，而 @v{version} 显式路径一直正常），
+            // 它原本是第一优先级 → 会把新版本误判成「已是最新」，用户永远收不到更新。
+            val candidates = withContext(Dispatchers.IO) {
+                listOfNotNull(
+                    runCatching { parseDataApi(httpGet(JSDELIVR_DATA_URL)) }.getOrNull(),
+                    runCatching { parseVersionJson(httpGet(JSDELIVR_VERSION_URL)) }.getOrNull(),
+                    runCatching { parseGithubLatest(httpGet("$API_BASE/releases/latest")) }.getOrNull(),
+                )
+            }
+            val best = pickNewest(candidates) ?: run {
                 withContext(Dispatchers.Main) {
-                    listener.onResult("检查更新失败：网络异常（jsDelivr 与 GitHub 均不可达）")
+                    listener.onResult("检查更新失败：网络异常或版本信息解析失败（jsDelivr 与 GitHub 均不可达）")
                 }
                 return@launch
             }
 
-            runCatching {
-                val obj = JSONObject(info)
-                if (obj.has("versions")) {
-                    // jsDelivr data API：{"versions":[{"version":"0.5.1"},...]}（最新在前，无 v 前缀）
-                    val jsdVersion = obj.optJSONArray("versions")?.optJSONObject(0)?.optString("version")
-                    if (!jsdVersion.isNullOrEmpty()) {
-                        Triple(jsdVersion.removePrefix("v"), "", "$JSDELIVR_CDN_BASE$jsdVersion/$APK_REPO_PATH")
-                    } else error("jsDelivr 数据为空")
-                } else if (obj.has("version")) {
-                    // @main/version.json：{"version":"0.5.3","notes":"..."}
-                    val vJson = obj.optString("version").removePrefix("v")
-                    Triple(vJson, obj.optString("notes", "").trim().take(500), "$JSDELIVR_CDN_BASE$vJson/$APK_REPO_PATH")
-                } else {
-                    // GitHub API：tag_name / body / assets.browser_download_url
-                    val tag = obj.optString("tag_name").removePrefix("v")
-                    val notes = obj.optString("body", "").trim().take(500)
-                    val asset = obj.optJSONArray("assets")?.let { arr ->
-                        (0 until arr.length()).firstNotNullOfOrNull { i ->
-                            val a = arr.optJSONObject(i)
-                            if (a?.optString("name")?.endsWith(".apk") == true) a else null
-                        }
-                    }
-                    val url = asset?.optString("browser_download_url").orEmpty()
-                    Triple(tag, notes, url)
-                }
-            }.onSuccess { (tag, notes, url) ->
-                if (isNewer(tag, current)) {
-                    withContext(Dispatchers.Main) { listener.onUpdateAvailable(tag, notes, url) }
-                } else {
-                    withContext(Dispatchers.Main) { listener.onResult(null) }
-                }
-            }.onFailure { e ->
+            if (ReleaseNotes.isNewer(best.version, current)) {
                 withContext(Dispatchers.Main) {
-                    listener.onResult("解析版本信息失败：${e.message}")
+                    listener.onUpdateAvailable(best.version, best.notes, best.apkUrl)
                 }
+            } else {
+                withContext(Dispatchers.Main) { listener.onResult(null) }
             }
         }
     }
+
+    /** 单个源解析出的候选版本（纯数据，便于 JVM 单测） */
+    internal data class Candidate(val version: String, val notes: String, val apkUrl: String)
+
+    /** @v{version} tag 路径的 APK 下载地址（tag 不可变，冷缓存秒级生效） */
+    private fun cdnApkUrl(version: String): String = "$JSDELIVR_CDN_BASE$version/$APK_REPO_PATH"
+
+    /**
+     * 从各源候选中挑出**版本号最高**的一个（2026-09-09 #29）。
+     * 空版本号忽略；全为空返回 null。
+     */
+    internal fun pickNewest(candidates: List<Candidate>): Candidate? =
+        candidates.filter { it.version.isNotBlank() }
+            .reduceOrNull { best, cur -> if (ReleaseNotes.isNewer(cur.version, best.version)) cur else best }
+
+    /** jsDelivr data API：{"versions":[{"version":"0.5.1"},...]}（最新在前，无 v 前缀） */
+    internal fun parseDataApi(body: String): Candidate? = runCatching {
+        val arr = JSONObject(body).optJSONArray("versions") ?: return@runCatching null
+        val v = arr.optJSONObject(0)?.optString("version")?.removePrefix("v").orEmpty()
+        if (v.isEmpty()) null else Candidate(v, "", cdnApkUrl(v))
+    }.getOrNull()
+
+    /** 仓库内 @main/version.json：{"version":"0.5.3","notes":"..."} */
+    internal fun parseVersionJson(body: String): Candidate? = runCatching {
+        val obj = JSONObject(body)
+        val v = obj.optString("version").removePrefix("v")
+        if (v.isEmpty()) null
+        else Candidate(v, obj.optString("notes", "").trim().take(500), cdnApkUrl(v))
+    }.getOrNull()
+
+    /** GitHub releases/latest：tag_name / body / assets.browser_download_url */
+    internal fun parseGithubLatest(body: String): Candidate? = runCatching {
+        val obj = JSONObject(body)
+        val v = obj.optString("tag_name").removePrefix("v")
+        if (v.isEmpty()) null else {
+            val asset = obj.optJSONArray("assets")?.let { arr ->
+                (0 until arr.length()).firstNotNullOfOrNull { i ->
+                    val a = arr.optJSONObject(i)
+                    if (a?.optString("name")?.endsWith(".apk") == true) a else null
+                }
+            }
+            val url = asset?.optString("browser_download_url").orEmpty()
+            Candidate(v, obj.optString("body", "").trim().take(500), url.ifEmpty { cdnApkUrl(v) })
+        }
+    }.getOrNull()
 
     /** GET 文本（15s 超时） */
     private fun httpGet(urlStr: String): String {
@@ -260,17 +278,5 @@ object UpdateManager {
             return
         }
         throw IllegalStateException("重定向次数过多")
-    }
-
-    /** 数字分段比较版本（v1.2.10 > v1.2.9） */
-    private fun isNewer(newTag: String, current: String): Boolean {
-        val a = newTag.split('.', '-').mapNotNull { it.toIntOrNull() }
-        val b = current.split('.', '-').mapNotNull { it.toIntOrNull() }
-        for (i in 0 until maxOf(a.size, b.size)) {
-            val x = a.getOrElse(i) { 0 }
-            val y = b.getOrElse(i) { 0 }
-            if (x != y) return x > y
-        }
-        return false
     }
 }

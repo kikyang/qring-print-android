@@ -24,7 +24,7 @@ class ReleaseNotesTest {
 
     @Test
     fun `说明收集 当前已最新返回 null`() {
-        assertNull("与日志最新版本相同应无说明", ReleaseNotes.notesSince("0.7.6"))
+        assertNull("与日志最新版本相同应无说明", ReleaseNotes.notesSince("0.7.7"))
     }
 
     @Test
@@ -61,10 +61,10 @@ class ReleaseNotesTest {
     fun `说明收集 低于日志最低版本列出全部`() {
         val notes = ReleaseNotes.notesSince("0.5.4") ?: error("0.5.4 后有更新，不应为空")
         assertTrue("含最低 0.5.5", notes.contains("【0.5.5】"))
-        assertTrue("含最高 0.7.6", notes.contains("【0.7.6】"))
+        assertTrue("含最高 0.7.7", notes.contains("【0.7.7】"))
         assertTrue("含 0.7.2", notes.contains("【0.7.2】"))
         assertTrue("含 0.7.1", notes.contains("【0.7.1】"))
         assertTrue("含 0.7.0", notes.contains("【0.7.0】"))
-        assertEquals("全部 12 条", 12, notes.split("【").size - 1)
+        assertEquals("全部 13 条", 13, notes.split("【").size - 1)
     }
 }

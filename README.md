@@ -20,12 +20,16 @@
 
 ## 下载 APK
 
-最新版见 [Releases](https://github.com/kikyang/qring-print-android/releases)（v0.7.6，约 1.0MB，需 Android 13+）。
+最新版见 [Releases](https://github.com/kikyang/qring-print-android/releases)（v0.7.7，约 1.0MB，需 Android 13+）。
 应用内「我的 → 关于 → 检查更新」可直接升级到新版本（检查走 jsDelivr，国内网络可用；
 发版后 2-3 小时内新版可能尚未被收录，属正常延迟）。
 
 ## 更新日志
 
+- **v0.7.7（2026-09-09）**：**修复「检查更新」漏报新版本**——更新检查改为**多个源都取、按版本号取最高**：
+  jsDelivr 的版本列表索引会长期滞后（实测 v0.7.5 发布 8 天后、v0.7.6 当天都没被收录，
+  但 `@v{version}` 显式路径一直正常），旧实现「谁先成功用谁」且把该列表排第一，
+  导致新版本被误判成「已是最新」，用户永远收不到更新提示；210 例测试全过
 - **v0.7.6（2026-09-09）**：**界面主题改为 8 套差异化风格**（移除旧微信风/简洁风/蓝白风）：
   **紫罗兰 / 墨绿纸感 / 暗色效能 / 手账纸感 / 热敏黑白 / 奶油多彩 / Apple Bento / 玻璃拟态**；
   我的页主题选择改为竖向列表（色卡 + 名称 + 勾选态，选完立即生效）；
@@ -140,8 +144,9 @@
 - **打印设置**：浓度（0~2）/ 进纸 / 出纸 可调，持久化保存
 - 打印体检：开盖/缺纸/过热/低电量实时拦截
 - **检查更新（OTA，v0.5.2 起走 jsDelivr）**：藏于「我的 → 关于」，
-  检查源 = jsDelivr data API（主）+ version.json（fallback），下载 = jsDelivr CDN @tag 路径
-  → 一键安装；版本号数字分段比较，下载手动跟随重定向（国内网络可用，发版后 2-3h 收录延迟属正常）
+  检查源 = **三个源都取、按版本号取最高**（jsDelivr 版本列表 + 仓库 `@main/version.json` + GitHub API），
+  下载 = jsDelivr CDN @v{tag} 路径 → 一键安装；版本号数字分段比较，下载手动跟随重定向
+  （v0.7.7 修：此前「谁先成功用谁」且把滞后的 jsDelivr 列表排第一，会漏报新版本）
 - 调试台（藏于「我的 → 关于」）：收发 hex 日志、原始命令
 
 ### UI
@@ -158,14 +163,14 @@
 
 ```bash
 cd android
-gradle runUnitTests       # 单元测试（协议/算法/界面/虚拟打印机端到端 + 性能基准，共 201 例）
+gradle runUnitTests       # 单元测试（协议/算法/界面/虚拟打印机端到端 + 性能基准，共 210 例）
 gradle assembleRelease    # 正式签名 release（R8 已开，APK ~1.0MB）
 gradle assembleDebug      # 调试版（无 R8，~6.4MB）
 ```
 
-### 测试覆盖（2026-08-12 建立，**2026-09-09 全量 201 例**）
+### 测试覆盖（2026-08-12 建立，**2026-09-09 全量 210 例**）
 
-> 下列为分批补充的测试类（合计 201 例）；新增测试类后记得把类名加进 `app/build.gradle.kts` 的 `runUnitTests.args`。
+> 下列为分批补充的测试类（合计 210 例）；新增测试类后记得把类名加进 `app/build.gradle.kts` 的 `runUnitTests.args`。
 
 - **协议层**（QringProtocolTest，15 例）：状态位解析、开盖/缺纸提示优先级、指令字节序、走纸/光栅头拆分
 - **算法层**（DitherTest / CannyTest，15 例）：抖动密度统计、阈值语义、**蛇形扫描奇偶行方向交替（金标准用例）**、边缘检测边界
@@ -183,10 +188,10 @@ gradle assembleDebug      # 调试版（无 R8，~6.4MB）
   BLE/SPP/Fake 三通道共享同一份代码——**实物联调只剩 GATT 写特征 + 热敏头物理
   两个未知量**
 - **性能基准**（ImagePipelineBenchTest，3 例，JVM 参考值见下节）
-- **后续新增**（v0.7.x 分批补充，合计 201 例）：图片增强/变换/裁剪（ImageEnhancerTest / ImageTransformTest）、
+- **后续新增**（v0.7.x 分批补充，合计 210 例）：图片增强/变换/裁剪（ImageEnhancerTest / ImageTransformTest）、
   Markdown 打印（MarkdownParserTest / MarkdownRendererTest）、PPT 导入与 Word 公式排版（MathLayoutTest）、
   批量打印（CsvTableParserTest / XlsxTableExtractorTest / BatchTemplateTest）、函数图像
-  （ExpressionEvaluatorTest / FunctionGraphTest）、OTA 更新说明（ReleaseNotesTest）、
+  （ExpressionEvaluatorTest / FunctionGraphTest）、OTA 更新说明与多源择优（ReleaseNotesTest / UpdateManagerTest）、
   条码 13 种与校验/清洗（BarcodeGeneratorTest）
 - 首次跑 Robolectric 会自动下载 android-all 镜像（约 150MB，此后缓存于 ~/.robolectric）；
   蓝牙在 shadow 下为空实现
@@ -246,7 +251,7 @@ BLE 传输：1M 像素光栅 ≈ 125KB 数据，按 32B/包 × 80ms 节奏传输
 │       ├── MathWorksheet.kt          # 口算题生成（借鉴 lztttt）
 │       ├── CanvasEditor.kt           # 元素排版：元素模型/384 宽渲染/模板 JSON 存取（含涂鸦笔画）
 │       ├── CanvasLayout.kt           # 元素排版：拖拽/命中/缩放/置顶/涂鸦模式
-│       ├── UpdateManager.kt          # OTA 检查更新（jsDelivr + GitHub fallback）
+│       ├── UpdateManager.kt          # OTA 检查更新（三源取最高版本 + jsDelivr 下载）
 │       ├── SelfTest.kt               # 打印测试页
 │       ├── BarcodeGenerator.kt       # 条码/二维码（zxing，13 种可写码制 + 输入清洗/校验位重算）
 │       ├── PrintLog.kt               # 日志：内存环形缓冲 + 关键事件落盘
@@ -255,7 +260,7 @@ BLE 传输：1M 像素光栅 ≈ 125KB 数据，按 32B/包 × 80ms 节奏传输
 │       ├── DebugActivity.kt          # 调试台（收发 hex 日志/原始命令）
 │       ├── Design.kt                 # 8 套主题设计系统（含线性图标）
 │       └── MainActivity.kt           # 三 Tab 主界面
-│   └── app/src/test/java/com/qring/print/  # 201 例测试
+│   └── app/src/test/java/com/qring/print/  # 210 例测试
 │       ├── QringProtocolTest.kt      # 协议字节/状态位/指令构造（15 例）
 │       ├── DitherTest.kt / CannyTest.kt  # 抖动/边缘检测算法（15 例）
 │       ├── TemplateBuilderTest.kt / HistoryStoreTest.kt / SettingsTest.kt
