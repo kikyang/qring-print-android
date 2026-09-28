@@ -73,6 +73,24 @@ class MainActivity : Activity() {
     private lateinit var subTabOther: RadioButton
     private lateinit var subTabBarcode: RadioButton
     private lateinit var subTabDoc: RadioButton
+    // ── 统一准备打印页（#23，2026-09-28 加）：所有打印路径的终点 ──
+    // 立这一层的理由：确认条在 v0.7.4 已统一，但「预览（页内）↔ 确认条（弹窗）」是分家的，
+    // 且模板类点宫格直接跳弹窗、连预览都没有。准备页把 大预览 + 内容相关操作 + 统一确认条
+    // 收进同一屏，七条路径（文字/图片/条码/文档/模板/画布/错题卡）+ 批量 + 自检页全部走它。
+    private lateinit var printSubGroup: RadioGroup
+    private lateinit var prepareContent: LinearLayout
+    private lateinit var prepareTitle: TextView
+    private lateinit var prepareSub: TextView
+    private lateinit var preparePreview: ImageView
+    private lateinit var prepareActions: LinearLayout
+    private lateinit var prepareBarHolder: LinearLayout
+    private lateinit var prepareStatus: TextView
+    /** 当前确认条（每次进准备页重建，保证浓度/走纸读的是最新 Settings） */
+    private var prepareBar: ConfirmBar? = null
+    /** 准备页确认后要执行的动作（份数为参数） */
+    private var prepareOnPrint: ((Int) -> Unit)? = null
+    /** 进准备页前的二级 Tab id（返回时还原） */
+    private var prepareReturnTabId = View.NO_ID
     // 画布区（自定义元素排版 2026-08-12，合成自 bzhou830/snowboys/lztttt；
     // 2026-08-12 晚并入图片页：Dialog 入口，结果加入图片通道，不再占顶部 Tab）
     private lateinit var canvasLayout: CanvasLayout
@@ -253,6 +271,21 @@ class MainActivity : Activity() {
         // #14 系统分享入口：相册/文件「分享图片」冷启动进入图片页
         handleShareIntent(intent)
         // 自检触发移到 onResume（App 运行时 am start 走 onNewIntent，onCreate 拿不到 extra）
+    }
+
+    /**
+     * 返回键（#23）：准备页显示时先回工作区（否则用户从准备页按返回会直接退出 App）。
+     * 用 android.app.Activity 的 onBackPressed（本 Activity 不继承 ComponentActivity，
+     * 拿不到 OnBackPressedDispatcher），API 33+ 已废弃但行为正确。
+     */
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        if (isPrepareShowing()) {
+            backToWorkspace()
+        } else {
+            @Suppress("DEPRECATION")
+            super.onBackPressed()
+        }
     }
 
     /**
@@ -713,25 +746,13 @@ class MainActivity : Activity() {
         subTabBarcode = subTab("条码", "barcode")
         subTabDoc = subTab("文档", "doc")
         subTabOther = subTab("其它", "template")
+        printSubGroup = subGroup
         subGroup.addView(subTabText, RadioGroup.LayoutParams(0, RadioGroup.LayoutParams.WRAP_CONTENT, 1f))
         subGroup.addView(subTabImage, RadioGroup.LayoutParams(0, RadioGroup.LayoutParams.WRAP_CONTENT, 1f))
         subGroup.addView(subTabBarcode, RadioGroup.LayoutParams(0, RadioGroup.LayoutParams.WRAP_CONTENT, 1f))
         subGroup.addView(subTabDoc, RadioGroup.LayoutParams(0, RadioGroup.LayoutParams.WRAP_CONTENT, 1f))
         subGroup.addView(subTabOther, RadioGroup.LayoutParams(0, RadioGroup.LayoutParams.WRAP_CONTENT, 1f))
-        subGroup.setOnCheckedChangeListener { _, checkedId ->
-            // 切页：只显示当前功能内容，互不掺和
-            textContent.visibility = if (checkedId == subTabText.id) View.VISIBLE else View.GONE
-            imageContent.visibility = if (checkedId == subTabImage.id) View.VISIBLE else View.GONE
-            barcodeContent.visibility = if (checkedId == subTabBarcode.id) View.VISIBLE else View.GONE
-            docContent.visibility = if (checkedId == subTabDoc.id) View.VISIBLE else View.GONE
-            otherContent.visibility = if (checkedId == subTabOther.id) View.VISIBLE else View.GONE
-            // #5e：进其它页时重建「我的模板」宫格（存/删模板后保持最新）
-            if (checkedId == subTabOther.id) refreshUserTemplateGrid()
-            // 着色
-            listOf(subTabText, subTabImage, subTabBarcode, subTabDoc, subTabOther).forEach {
-                it.setTextColor(if (it.id == checkedId) Design.PRIMARY else Design.TEXT_SUB)
-            }
-        }
+        subGroup.setOnCheckedChangeListener { _, checkedId -> applyPrintSubTab(checkedId) }
         page.addView(subGroup)
 
         // 五个功能内容块（独立构建，visibility 切换；其它 = 模板 + 错题卡）
@@ -745,10 +766,170 @@ class MainActivity : Activity() {
         page.addView(barcodeContent)
         page.addView(docContent)
         page.addView(otherContent)
+        // #23 统一准备打印页：与五个工作区并列的第 6 块，默认隐藏，goPrepare() 时显示
+        prepareContent = buildPrepareContent()
+        page.addView(prepareContent)
         // 默认文字页
         subTabText.isChecked = true
         return scroll
     }
+
+    /**
+     * 打印页二级 Tab 切换：只显示当前功能内容，互不掺和。
+     *
+     * **必须独立成方法**：`RadioGroup.check()` 对一个**已选中**的项不会触发
+     * OnCheckedChangeListener —— 准备页返回时正好是"切回原 Tab"，只靠 check() 会让
+     * 工作区表单停在 GONE（2026-09-28 由新增用例 `准备页返回按钮回到原工作区` 抓出的真 bug）。
+     */
+    private fun applyPrintSubTab(checkedId: Int) {
+        textContent.visibility = if (checkedId == subTabText.id) View.VISIBLE else View.GONE
+        imageContent.visibility = if (checkedId == subTabImage.id) View.VISIBLE else View.GONE
+        barcodeContent.visibility = if (checkedId == subTabBarcode.id) View.VISIBLE else View.GONE
+        docContent.visibility = if (checkedId == subTabDoc.id) View.VISIBLE else View.GONE
+        otherContent.visibility = if (checkedId == subTabOther.id) View.VISIBLE else View.GONE
+        // #5e：进其它页时重建「我的模板」宫格（存/删模板后保持最新）
+        if (checkedId == subTabOther.id) refreshUserTemplateGrid()
+        // 着色
+        listOf(subTabText, subTabImage, subTabBarcode, subTabDoc, subTabOther).forEach {
+            it.setTextColor(if (it.id == checkedId) Design.PRIMARY else Design.TEXT_SUB)
+        }
+    }
+
+    // ═══════════════════ 统一准备打印页（#23，2026-09-28）═══════════════════
+
+    /**
+     * 准备页布局：大预览（由**待发送的 1-bit 光栅**直出 = 真·所见即所打）+ 内容相关操作
+     * + 统一确认条（浓度/前后走纸/份数，与快速确认对话框共用 [buildConfirmBar]）+ 打印按钮。
+     * 默认 GONE，由 [goPrepare] 填充并显示。
+     */
+    private fun buildPrepareContent(): LinearLayout {
+        val col = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+        }
+
+        col.addView(Design.card {
+            prepareTitle = Design.sectionTitle("准备打印")
+            addView(prepareTitle)
+            prepareSub = Design.caption("")
+            addView(prepareSub)
+            preparePreview = ImageView(this@MainActivity).apply {
+                adjustViewBounds = true
+                scaleType = ImageView.ScaleType.FIT_CENTER
+            }
+            addView(preparePreview, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = Design.dp(8)
+            })
+            addView(Design.caption("这是实际打印效果，满意再打（先预览防废纸）"))
+            // 内容相关操作（按来源给按钮，如「换个模板」；至少含一个返回入口）
+            prepareActions = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.HORIZONTAL }
+            addView(prepareActions, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = Design.dp(6)
+            })
+        })
+
+        col.addView(Design.card {
+            addView(Design.sectionTitle("打印设置"))
+            prepareBarHolder = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL }
+            addView(prepareBarHolder)
+        })
+
+        val printBtn = Design.primaryButton("🖨 打印")
+        col.addView(printBtn, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+            topMargin = Design.dp(4)
+        })
+        printBtn.setOnClickListener {
+            val onPrint = prepareOnPrint
+            if (onPrint == null) {
+                prepareStatus.text = "没有待打印内容"
+                return@setOnClickListener
+            }
+            onPrint(prepareBar?.copies?.invoke() ?: 1)
+        }
+
+        prepareStatus = Design.caption("")
+        col.addView(prepareStatus)
+        return col
+    }
+
+    /**
+     * 进入统一准备打印页（**所有打印路径的唯一终点**）。
+     *
+     * @param title    标题（含来源，如「准备打印 · 文字」/「准备打印 · 批量（共 12 条）」）
+     * @param sub      尺寸等副信息
+     * @param preview  预览图，**必须由待发送的光栅直出**（imagePreviewRaster / rasterToPreviewBitmap）
+     * @param backLabel 返回按钮文案（不同来源回不同地方）
+     * @param onPrint  确认后执行（份数），通常包一层 doPrintConfirmed
+     */
+    private fun goPrepare(
+        title: String,
+        sub: String,
+        preview: Bitmap,
+        backLabel: String = "← 返回修改",
+        onPrint: (Int) -> Unit,
+    ) {
+        // 记住当前二级 Tab，返回时还原
+        prepareReturnTabId = printSubGroup.checkedRadioButtonId
+        prepareTitle.text = title
+        prepareSub.text = sub
+        preparePreview.setImageBitmap(preview)
+        preparePreview.maxHeight = preparePreviewMaxHeight()
+        prepareStatus.setTextColor(Design.TEXT_SUB)
+        prepareStatus.text = ""
+
+        // 内容相关操作：返回入口 + 可选的来源专属按钮
+        prepareActions.removeAllViews()
+        val back = Design.outlineButton(backLabel)
+        back.setOnClickListener { backToWorkspace() }
+        prepareActions.addView(back, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+
+        // 确认条每次重建：浓度/走纸读最新 Settings（与弹窗行为一致）
+        val bar = buildConfirmBar()
+        prepareBar = bar
+        prepareBarHolder.removeAllViews()
+        prepareBarHolder.addView(bar.view, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+
+        prepareOnPrint = onPrint
+        // 来源可能在「我的」页（如自检页），准备页在打印页内 → 必须先切过去，否则点完看不见
+        switchPage(PAGE_PRINT)
+        // 隐藏五个工作区与二级 Tab，只留准备页
+        printSubGroup.visibility = View.GONE
+        listOf(textContent, imageContent, barcodeContent, docContent, otherContent).forEach {
+            it.visibility = View.GONE
+        }
+        prepareContent.visibility = View.VISIBLE
+        (printPage as? ScrollView)?.scrollTo(0, 0)
+    }
+
+    /** 从准备页返回工作区（还原进准备页前的二级 Tab 与内容可见性） */
+    private fun backToWorkspace() {
+        prepareContent.visibility = View.GONE
+        prepareOnPrint = null
+        printSubGroup.visibility = View.VISIBLE
+        val target = if (prepareReturnTabId != View.NO_ID &&
+            printSubGroup.findViewById<View>(prepareReturnTabId) != null) {
+            prepareReturnTabId
+        } else {
+            // 兜底：还原失败时回到「其它」页（模板/批量的来源）
+            subTabOther.id
+        }
+        if (printSubGroup.checkedRadioButtonId != target) printSubGroup.check(target)
+        // check() 对已选中项不触发监听器 → 显式重放一次可见性，否则表单停在 GONE
+        applyPrintSubTab(target)
+    }
+
+    /** 准备页是否正在显示（返回键 / 测试用） */
+    private fun isPrepareShowing(): Boolean =
+        ::prepareContent.isInitialized && prepareContent.visibility == View.VISIBLE
+
+    /** 准备页预览图最大高度：按屏幕可用高度自适应（与弹窗同口径，issue #5 防回归） */
+    private fun preparePreviewMaxHeight(): Int =
+        minOf(Design.dp(520), (resources.displayMetrics.heightPixels - Design.dp(360))
+            .coerceAtLeast(Design.dp(200)))
 
     // ── 文字内容块 ──
     private fun buildTextContent(): LinearLayout {
@@ -798,7 +979,7 @@ class MainActivity : Activity() {
             previewBtn.setOnClickListener { renderTextPreview() }
         })
 
-        val printBtn = Design.primaryButton("🖨 打印文字")
+        val printBtn = Design.primaryButton("下一步：准备打印 →")
         col.addView(printBtn, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
             topMargin = Design.dp(4)
         })
@@ -817,7 +998,7 @@ class MainActivity : Activity() {
         // ── 顶栏：标题 + 打印（WYSIWYG 工作台）──
         root.addView(Design.row {
             addView(Design.sectionTitle("图片打印"))
-            val topPrint = Design.primaryButton("🖨 打印")
+            val topPrint = Design.primaryButton("下一步：准备打印 →")
             addView(topPrint, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
                 marginStart = Design.dp(8)
                 gravity = Gravity.END
@@ -1257,9 +1438,9 @@ class MainActivity : Activity() {
     /** #5e：系统模板动作分发（内置 JSON 注册表 build 键 → 生成/弹窗） */
     private fun runSystemTemplate(build: String) {
         when (build) {
-            SystemTemplates.ACTION_COURSE -> printTemplate { TemplateLibrary.courseTable() }
-            SystemTemplates.ACTION_WORD -> printTemplate { TemplateLibrary.wordList() }
-            SystemTemplates.ACTION_PLAN -> printTemplate { TemplateLibrary.dailyPlan() }
+            SystemTemplates.ACTION_COURSE -> printTemplate("课程表") { TemplateLibrary.courseTable() }
+            SystemTemplates.ACTION_WORD -> printTemplate("单词表") { TemplateLibrary.wordList() }
+            SystemTemplates.ACTION_PLAN -> printTemplate("每日计划") { TemplateLibrary.dailyPlan() }
             SystemTemplates.ACTION_MATH -> showMathDialog()
             SystemTemplates.ACTION_BATCH -> showBatchDialog()
             SystemTemplates.ACTION_GRAPH -> showFunctionGraphDialog()
@@ -1433,18 +1614,19 @@ class MainActivity : Activity() {
             previewBtn.setOnClickListener { renderCardPreview() }
         })
 
-        val printBtn = Design.primaryButton("🎴 生成并打印错题卡")
+        val printBtn = Design.primaryButton("下一步：准备打印 →")
         content.addView(printBtn, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
             topMargin = Design.dp(4)
         })
-        printBtn.setOnClickListener { printTemplateCard() }
+        // #23：进准备页前先关掉错题卡弹窗（否则准备页会被弹窗盖住）
+        printBtn.setOnClickListener { cardDialog?.takeIf { it.isShowing }?.dismiss(); printTemplateCard() }
 
         // 重做卷（2026-08-13 加，复习友好版的一部分）：选 N 张题目图 → 题目区前、订正区后的卷子
         val reworkBtn = Design.ghostButton("📜 重做卷（选 N 张题目图 → 题目前/订正后）")
         content.addView(reworkBtn, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
             topMargin = Design.dp(4)
         })
-        reworkBtn.setOnClickListener { printReworkSheet() }
+        reworkBtn.setOnClickListener { cardDialog?.takeIf { it.isShowing }?.dismiss(); printReworkSheet() }
 
         cardStatus = Design.caption("")
         content.addView(cardStatus)
@@ -1549,7 +1731,7 @@ class MainActivity : Activity() {
             }
         })
 
-        val printBtn = Design.primaryButton("🏷 打印条码")
+        val printBtn = Design.primaryButton("下一步：准备打印 →")
         col.addView(printBtn, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
             topMargin = Design.dp(4)
         })
@@ -2144,7 +2326,7 @@ class MainActivity : Activity() {
             previewBtn.setOnClickListener { renderDocPreview() }
         })
 
-        val printBtn = Design.primaryButton("🖨 打印文档")
+        val printBtn = Design.primaryButton("下一步：准备打印 →")
         col.addView(printBtn, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
             topMargin = Design.dp(4)
         })
@@ -2270,10 +2452,10 @@ class MainActivity : Activity() {
             return
         }
         val title = currentDocTitle
-        previewConfirmDialog(title, imagePreviewRaster(raster)) { copies ->
+        goPrepare("准备打印 · 文档", title, imagePreviewRaster(raster), backLabel = "← 返回换文档") { copies ->
             doPrintConfirmed(
                 raster, mode = currentDocMode, halveRows = currentDocMode == 2,
-                okMessage = "文档打印完成", statusView = docStatus,
+                okMessage = "文档打印完成", statusView = prepareStatus,
                 historyType = "文档", historyTitle = title,
                 copies = copies,
             )
@@ -2301,9 +2483,10 @@ class MainActivity : Activity() {
                 val raster = RasterEncoder.encode(bmp, DitherMode.NONE, RasterEncoder.THRESHOLD_IMAGE)
                 val previewBmp = imagePreviewRaster(raster)
                 barcodePreview.setImageBitmap(previewBmp)
-                previewConfirmDialog("确认打印条码", previewBmp) { copies ->
+                goPrepare("准备打印 · 条码", "${currentBarcodeType.label} · ${raster.widthBytes * 8}×${raster.height} 点",
+                    previewBmp, backLabel = "← 返回改条码") { copies ->
                     doPrintConfirmed(raster, mode = 2, halveRows = true, okMessage = "条码打印完成",
-                        statusView = barcodeStatus, historyType = "条码", historyTitle = barcodeInput.text.toString().take(20),
+                        statusView = prepareStatus, historyType = "条码", historyTitle = barcodeInput.text.toString().take(20),
                         paramsJson = barcodeParamsJson(), copies = copies)
                 }
             } catch (e: Exception) {
@@ -3201,7 +3384,6 @@ class MainActivity : Activity() {
      * 直接写 Settings（thickness/feedBefore/feedAfter），doPrintConfirmed 已从 Settings 读，调用点零改动。
      */
     private fun previewConfirmDialog(title: String, previewBmp: Bitmap, onConfirm: (copies: Int) -> Unit) {
-        var copies = 1
         // issue #5（2026-09-01 用户报告）：预览图较高时「确认条 + 确认打印按钮」被挤出屏幕，
         // 且 AlertDialog 的自定义视图不可滚动 → 打印按钮点不到。双重保险：
         // ① 预览图高度按屏幕可用高度自适应（为标题/说明/确认条/按钮预留空间）；
@@ -3216,6 +3398,43 @@ class MainActivity : Activity() {
             maxHeight = previewMaxHeight
             setPadding(Design.dp(12), Design.dp(8), Design.dp(12), Design.dp(8))
         }
+        // 统一确认条（#23 起与准备页共用同一构造器，保证两处选项完全一致）
+        val bar = buildConfirmBar()
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(img)
+            addView(bar.view, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = Design.dp(2)
+            })
+        }
+        // 可滚动容器：预览图自适应后通常无需滚动；超长内容（如长图/长文）仍可滚动到底部确认条
+        val container = ScrollView(this).apply {
+            isFillViewport = false
+            addView(content, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        }
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(title)
+            .setMessage("这是实际打印效果，满意再打")
+            .setView(container)
+            .setPositiveButton("🖨 确认打印", null)
+            .setNegativeButton("取消", null)
+            .create()
+        dialog.show()
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            dialog.dismiss()
+            onConfirm(bar.copies())
+        }
+    }
+
+    /**
+     * 统一确认条（#23）：浓度 / 前后走纸 / 份数。**准备页与快速确认对话框共用此构造器**，
+     * 保证两条路径的选项永远一致（此前只有弹窗一份，准备页若另写一份必然漂移）。
+     * 选项直接写 Settings（thickness/feedBefore/feedAfter），doPrintConfirmed 从 Settings 读，调用点零改动。
+     */
+    class ConfirmBar(val view: View, val copies: () -> Int)
+
+    private fun buildConfirmBar(): ConfirmBar {
+        var copies = 1
         // 浓度（淡/中/浓 → Settings.thickness，全局生效）
         val thicknessGroup = Design.segmentGroup(
             listOf("淡" to 0, "中" to 1, "浓" to 2),
@@ -3251,7 +3470,7 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER
         })
         copiesRow.addView(plus, LinearLayout.LayoutParams(Design.dp(48), LinearLayout.LayoutParams.WRAP_CONTENT))
-        // 统一确认条（统一准备卡外观：白底圆角 + 选项行）
+        // 统一确认条外观：白底圆角 + 选项行
         val bar = Design.card {
             addView(Design.row {
                 addView(Design.label("打印浓度"), LinearLayout.LayoutParams(Design.dp(60), LinearLayout.LayoutParams.WRAP_CONTENT))
@@ -3271,30 +3490,7 @@ class MainActivity : Activity() {
             })
             addView(copiesRow)
         }
-        val content = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            addView(img)
-            addView(bar, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                topMargin = Design.dp(2)
-            })
-        }
-        // 可滚动容器：预览图自适应后通常无需滚动；超长内容（如长图/长文）仍可滚动到底部确认条
-        val container = ScrollView(this).apply {
-            isFillViewport = false
-            addView(content, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
-        }
-        val dialog = AlertDialog.Builder(this)
-            .setTitle(title)
-            .setMessage("这是实际打印效果，满意再打")
-            .setView(container)
-            .setPositiveButton("🖨 确认打印", null)
-            .setNegativeButton("取消", null)
-            .create()
-        dialog.show()
-        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-            dialog.dismiss()
-            onConfirm(copies)
-        }
+        return ConfirmBar(bar) { copies }
     }
 
     /**
@@ -3637,9 +3833,9 @@ class MainActivity : Activity() {
                 val bmp = RasterEncoder.rasterToPreviewBitmap(raster)
                 textPreview.setImageBitmap(bmp)
                 val desc = "${raster.widthBytes * 8}×${raster.height} 点，约 ${"%.0f".format(raster.height / 8.0)}mm 高"
-                previewConfirmDialog("确认打印文字（$desc）", bmp) { copies ->
+                goPrepare("准备打印 · 文字", desc, bmp, backLabel = "← 返回改文字") { copies ->
                     doPrintConfirmed(raster, mode = 0, halveRows = false, okMessage = "文字打印完成",
-                        statusView = textStatus, historyType = "文字", historyTitle = text.take(20),
+                        statusView = prepareStatus, historyType = "文字", historyTitle = text.take(20),
                         paramsJson = textParamsJson(), copies = copies)
                 }
             } catch (e: Exception) {
@@ -3663,9 +3859,10 @@ class MainActivity : Activity() {
                 val bmp = imagePreviewRaster(raster)
                 imagePreview.setImageBitmap(bmp)
                 val desc = "${raster.widthBytes * 8}×${raster.height} 点，约 ${"%.0f".format(raster.height / 8.0)}mm 高"
-                previewConfirmDialog("确认打印图片（$desc）", bmp) { copies ->
+                goPrepare("准备打印 · 图片", "$desc · 共 ${selectedImages.size} 张",
+                    bmp, backLabel = "← 返回图片工作台") { copies ->
                     doPrintConfirmed(raster, mode = 2, halveRows = true, okMessage = "图片打印完成",
-                        statusView = imageStatus, historyType = "图片", historyTitle = "图片 ${selectedImages.size} 张",
+                        statusView = prepareStatus, historyType = "图片", historyTitle = "图片 ${selectedImages.size} 张",
                         paramsJson = imageParamsJson(), copies = copies)
                 }
             } catch (e: Exception) {
@@ -3709,7 +3906,7 @@ class MainActivity : Activity() {
                 val title = text.lineSequence().firstOrNull { it.isNotBlank() }
                     ?.trim()?.take(20) ?: "Markdown"
                 val desc = "${raster.widthBytes * 8}×${raster.height} 点，约 ${"%.0f".format(raster.height / 8.0)}mm 高"
-                previewConfirmDialog("确认打印 Markdown（$desc）", bmp) { copies ->
+                goPrepare("准备打印 · Markdown", desc, bmp, backLabel = "← 返回改 Markdown") { copies ->
                     doPrintConfirmed(raster, mode = 2, halveRows = true, okMessage = "Markdown 打印完成",
                         statusView = docStatus, historyType = "Markdown", historyTitle = title,
                         paramsJson = markdownParamsJson(), copies = copies)
@@ -3797,9 +3994,11 @@ class MainActivity : Activity() {
                 }
                 val bmp = imagePreviewRaster(raster)
                 cardPreview.setImageBitmap(bmp)
-                previewConfirmDialog("确认打印重做卷（${problems.size} 题）", bmp) { copies ->
+                goPrepare("准备打印 · 重做卷（${problems.size} 题）",
+                    "${problems.size} 题 · ${raster.widthBytes * 8}×${raster.height} 点",
+                    bmp, backLabel = "← 返回模板列表") { copies ->
                     doPrintConfirmed(raster, mode = 2, halveRows = true, okMessage = "重做卷打印完成",
-                        statusView = cardStatus, historyType = "错题卡", historyTitle = "重做卷 ${problems.size} 题",
+                        statusView = prepareStatus, historyType = "错题卡", historyTitle = "重做卷 ${problems.size} 题",
                         paramsJson = reworkParamsJson(), copies = copies)
                 }
             } catch (e: Exception) {
@@ -3825,9 +4024,11 @@ class MainActivity : Activity() {
                 val raster = cardRaster(reason, knowledge)
                 val bmp = imagePreviewRaster(raster)
                 cardPreview.setImageBitmap(bmp)
-                previewConfirmDialog("确认打印错题卡", bmp) { copies ->
+                goPrepare("准备打印 · 错题卡",
+                    "${raster.widthBytes * 8}×${raster.height} 点，约 ${"%.0f".format(raster.height / 8.0)}mm 高",
+                    bmp, backLabel = "← 返回模板列表") { copies ->
                     doPrintConfirmed(raster, mode = 2, halveRows = true, okMessage = "错题卡打印完成",
-                        statusView = cardStatus, historyType = "错题卡", historyTitle = reason.ifEmpty { knowledge },
+                        statusView = prepareStatus, historyType = "错题卡", historyTitle = reason.ifEmpty { knowledge },
                         paramsJson = cardParamsJson(), copies = copies)
                 }
             } catch (e: Exception) {
@@ -3838,23 +4039,26 @@ class MainActivity : Activity() {
         }
     }
 
-    /** 模板打印：生成 → 预览确认 → 打印（首页宫格入口） */
-    private fun printTemplate(gen: () -> Bitmap) {
-        imageStatus.text = "正在生成模板预览 ..."
+    /** 模板打印：生成 → 统一准备打印页 → 打印（#24：模板即生成器，产出回统一流程） */
+    private fun printTemplate(name: String, gen: () -> Bitmap) {
+        otherStatus.text = "正在生成$name…"
+        otherStatus.setTextColor(Design.TEXT_SUB)
         scope.launch {
             try {
                 val page = gen()
                 val raster = RasterEncoder.encode(page, DitherMode.NONE, RasterEncoder.THRESHOLD_TEXT)
                 val bmp = imagePreviewRaster(raster)
-                previewConfirmDialog("确认打印模板", bmp) { copies ->
-                    doPrintConfirmed(raster, mode = 2, halveRows = true, okMessage = "模板打印完成",
-                        statusView = imageStatus, historyType = "模板", historyTitle = "模板",
+                goPrepare("准备打印 · $name",
+                    "${raster.widthBytes * 8}×${raster.height} 点，约 ${"%.0f".format(raster.height / 8.0)}mm 高",
+                    bmp, backLabel = "← 返回模板列表") { copies ->
+                    doPrintConfirmed(raster, mode = 2, halveRows = true, okMessage = "$name 打印完成",
+                        statusView = prepareStatus, historyType = "模板", historyTitle = name,
                         copies = copies)
                 }
             } catch (e: Exception) {
                 PrintLog.event("模板异常: ${e.javaClass.simpleName}: ${e.message}")
-                imageStatus.setTextColor(Design.ERROR)
-                imageStatus.text = "模板异常：${e.javaClass.simpleName} ${e.message}"
+                otherStatus.setTextColor(Design.ERROR)
+                otherStatus.text = "模板异常：${e.javaClass.simpleName} ${e.message}"
             }
         }
     }
@@ -3912,7 +4116,7 @@ class MainActivity : Activity() {
                     val count = (countGroup.checkedRadioButtonId.takeIf { it != -1 }
                         ?.let { countGroup.findViewById<RadioButton>(it)?.tag as? Int }) ?: 12
                     dismiss()
-                    printTemplate { MathWorksheet.build(op, count) }
+                    printTemplate("口算题") { MathWorksheet.build(op, count) }
                 }
             }
     }
@@ -4001,9 +4205,34 @@ class MainActivity : Activity() {
                 fileStatus.text = "模板需包含 {{列名}} 占位符，如：{{姓名}}"
                 return@setOnClickListener
             }
+            val firstPreview = batchFirstPreview(tpl, serialCheck.isChecked)
+            if (firstPreview == null) {
+                fileStatus.setTextColor(Design.ERROR)
+                fileStatus.text = "首条记录渲染失败：检查模板列名是否与文件列一致"
+                return@setOnClickListener
+            }
             dialog.dismiss()
-            doBatchPrint(batchRows, tpl, serialCheck.isChecked)
+            // #23：批量也走统一准备页——显示首条预览 + 总条数，确认后整批连续打印
+            goPrepare(
+                "准备打印 · 批量（共 ${batchRows.size} 条）",
+                "预览为第 1 条 · 共 ${batchRows.size} 条，确认后整批连续打印",
+                firstPreview,
+                backLabel = "← 返回模板列表",
+            ) { _ ->
+                doBatchPrint(batchRows, tpl, serialCheck.isChecked)
+            }
         }
+    }
+
+    /** 批量首条预览位图（准备页用；与 refreshBatchPreview 同一渲染路径，保证所见即所打） */
+    private fun batchFirstPreview(template: String, serialEnabled: Boolean): Bitmap? {
+        val row = batchRows.firstOrNull() ?: return null
+        val bound = bindBatchTemplate(template, row, serial = 1, serialEnabled = serialEnabled)
+        if (bound.isBlank()) return null
+        return runCatching {
+            val raster = RasterEncoder.encodeText(bound, fontSizePx = 40)
+            RasterEncoder.rasterToPreviewBitmap(raster)
+        }.getOrNull()
     }
 
     /** 批量首条预览：绑定首条记录 → 文字渲染成栅格 → 预览图 */
@@ -4029,14 +4258,14 @@ class MainActivity : Activity() {
      * 单条失败不中止，结束后汇总）。预检一次，之后逐条持续。
      */
     private fun doBatchPrint(rows: List<Map<String, String>>, template: String, serialEnabled: Boolean) {
-        otherStatus.text = "准备批量打印 ${rows.size} 条…"
-        otherStatus.setTextColor(Design.TEXT_SUB)
+        prepareStatus.text = "准备批量打印 ${rows.size} 条…"
+        prepareStatus.setTextColor(Design.TEXT_SUB)
         scope.launch {
             try {
                 val fault = printer.preflightCheck()
                 if (fault != null) {
-                    otherStatus.setTextColor(Design.ERROR)
-                    otherStatus.text = "打印被拦截：$fault"
+                    prepareStatus.setTextColor(Design.ERROR)
+                    prepareStatus.text = "打印被拦截：$fault"
                     return@launch
                 }
                 // 先全部生成（内存快），生成失败可提前中止省纸
@@ -4047,8 +4276,8 @@ class MainActivity : Activity() {
                     rasters.add(RasterEncoder.encodeText(bound, fontSizePx = 40))
                 }
                 if (rasters.isEmpty()) {
-                    otherStatus.setTextColor(Design.ERROR)
-                    otherStatus.text = "没有可打印内容：检查模板列名是否与文件列一致"
+                    prepareStatus.setTextColor(Design.ERROR)
+                    prepareStatus.text = "没有可打印内容：检查模板列名是否与文件列一致"
                     return@launch
                 }
                 var ok = 0
@@ -4064,10 +4293,10 @@ class MainActivity : Activity() {
                         copies = 1,
                     )
                     if (r.ok) ok++ else fail++
-                    otherStatus.text = "批量打印 $ok/${rasters.size} 条…" + if (fail > 0) "（$fail 失败）" else ""
+                    prepareStatus.text = "批量打印 $ok/${rasters.size} 条…" + if (fail > 0) "（$fail 失败）" else ""
                 }
-                otherStatus.setTextColor(if (fail == 0) Design.OK else Design.ERROR)
-                otherStatus.text = if (fail == 0) "✅ 批量打印完成，共 $ok 条"
+                prepareStatus.setTextColor(if (fail == 0) Design.OK else Design.ERROR)
+                prepareStatus.text = if (fail == 0) "✅ 批量打印完成，共 $ok 条"
                     else "批量打印完成：$ok 条成功，$fail 条失败"
                 if (ok > 0) {
                     runCatching {
@@ -4078,8 +4307,8 @@ class MainActivity : Activity() {
                 }
             } catch (e: Exception) {
                 PrintLog.event("批量打印异常: ${e.javaClass.simpleName}: ${e.message}")
-                otherStatus.setTextColor(Design.ERROR)
-                otherStatus.text = "批量打印异常：${e.javaClass.simpleName} ${e.message}"
+                prepareStatus.setTextColor(Design.ERROR)
+                prepareStatus.text = "批量打印异常：${e.javaClass.simpleName} ${e.message}"
             }
         }
     }
@@ -4177,9 +4406,9 @@ class MainActivity : Activity() {
             try {
                 val raster = RasterEncoder.encode(bmp, DitherMode.NONE, RasterEncoder.THRESHOLD_TEXT)
                 val pbmp = imagePreviewRaster(raster)
-                previewConfirmDialog("确认打印函数图像", pbmp) { copies ->
+                goPrepare("准备打印 · 函数图像", "f(x)=$expr", pbmp, backLabel = "← 返回模板列表") { copies ->
                     doPrintConfirmed(raster, mode = 2, halveRows = true, okMessage = "函数图像打印完成",
-                        statusView = otherStatus, historyType = "模板", historyTitle = "f(x)=$expr",
+                        statusView = prepareStatus, historyType = "模板", historyTitle = "f(x)=$expr",
                         copies = copies)
                 }
             } catch (e: Exception) {
@@ -4290,9 +4519,10 @@ class MainActivity : Activity() {
                 val page = SelfTest.build()
                 val raster = RasterEncoder.encode(page, DitherMode.FLOYD_STEINBERG)
                 val bmp = imagePreviewRaster(raster)
-                previewConfirmDialog("确认打印自检页", bmp) { copies ->
+                goPrepare("准备打印 · 自检页", "浓度线 / 线条 / 灰阶渐变 / 文字",
+                    bmp, backLabel = "← 返回") { copies ->
                     doPrintConfirmed(raster, mode = 2, halveRows = true, okMessage = "自检页打印完成",
-                        statusView = otherStatus, historyType = "自检页", historyTitle = "打印测试页",
+                        statusView = prepareStatus, historyType = "自检页", historyTitle = "打印测试页",
                         copies = copies)
                 }
             } catch (e: Exception) {

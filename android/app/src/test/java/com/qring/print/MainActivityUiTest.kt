@@ -199,29 +199,85 @@ class MainActivityUiTest {
     }
 
     @Test
-    fun `打印确认对话框内容在ScrollView内且确认按钮可见`() {
-        // issue #5（2026-09-01 用户报告）：预览图较高时确认条/确认按钮被挤出屏幕且无法滚动。
-        // 防回归：确认条（份数）必须位于 ScrollView 内，且预览图与它同容器。
+    fun `文字打印进入统一准备页且确认条在ScrollView内`() {
+        // #23（2026-09-28 方案 A）：打印路径不再直弹确认对话框，统一先到「准备打印页」
+        // （大预览 + 内容操作 + 统一确认条 + 打印按钮）。
+        // issue #5 防回归（2026-09-01 用户报告）：准备页挂在打印页自身的 ScrollView 内，
+        // 确认条（份数）与预览图必然可随页面滚动到，不会被挤出屏幕。
         val activity = Robolectric.buildActivity(MainActivity::class.java).setup().get()
         val root = activity.window.decorView
         clickBottomTab(activity, "打印")
 
         val input = findEditTextByHint(root, "输入要打印的文字（如错题内容）")
         assertNotNull("文字输入框应存在", input)
-        input!!.setText("确认条滚动防回归")
+        input!!.setText("准备页防回归")
         idle()
 
-        val printBtn = findText(root, "🖨 打印文字")
-        assertNotNull("打印按钮应存在", printBtn)
-        printBtn!!.performClick()
+        val next = findText(root, "下一步：准备打印 →")
+        assertNotNull("文字页应有「下一步：准备打印 →」按钮", next)
+        next!!.performClick()
         idle()
 
-        val dialog = org.robolectric.shadows.ShadowDialog.getLatestDialog()
-        assertNotNull("确认打印对话框应显示", dialog)
-        val dialogRoot = dialog!!.window!!.decorView
-        val scroll = findScrollContaining(dialogRoot, "份数 1")
+        assertNull("旧路径不应再直弹确认对话框", org.robolectric.shadows.ShadowDialog.getLatestDialog())
+
+        val title = findText(root, "准备打印 · 文字")
+        assertNotNull("应进入统一准备打印页", title)
+        assertNotNull("准备页应有「🖨 打印」按钮", findText(root, "🖨 打印"))
+
+        val scroll = findScrollContaining(root, "份数 1")
         assertNotNull("确认条应位于 ScrollView 内（issue #5 防回归）", scroll)
-        assertNotNull("预览图应与确认条同在一个 ScrollView 内", findPreviewImage(scroll!!))
+
+        // 预览图放在准备页标题所在的那张卡里（工作区那张预览图在另一个容器，不会误取）
+        val card = title!!.parent as ViewGroup
+        val preview = findPreviewImage(card)
+        assertNotNull("准备页预览图应存在", preview)
+        assertTrue("准备页预览应有位图（由待发送光栅直出）", preview!!.drawable != null)
+    }
+
+    @Test
+    fun `准备页返回按钮回到原工作区`() {
+        // 方案 A 的返回语义：准备页「← 返回…」应回到进入前的二级 Tab，表单重新可见。
+        val activity = Robolectric.buildActivity(MainActivity::class.java).setup().get()
+        val root = activity.window.decorView
+        clickBottomTab(activity, "打印")
+
+        val input = findEditTextByHint(root, "输入要打印的文字（如错题内容）")
+        assertNotNull("文字输入框应存在", input)
+        input!!.setText("返回语义")
+        idle()
+
+        findText(root, "下一步：准备打印 →")!!.performClick()
+        idle()
+        assertFalse("进准备页后工作区表单应隐藏", input.isShown)
+
+        val back = findText(root, "← 返回改文字")
+        assertNotNull("准备页应有返回按钮", back)
+        back!!.performClick()
+        idle()
+        assertTrue("返回后工作区表单应恢复可见", input.isShown)
+    }
+
+    @Test
+    fun `模板生成后进入统一准备页`() {
+        // #24（2026-09-28 方案 A）：模板 = 生成器，生成结果必须回「统一准备打印页」
+        // （此前 printTemplate 生成完直接弹确认框，没有"生成后先看一眼大图"的中间态）。
+        val activity = Robolectric.buildActivity(MainActivity::class.java).setup().get()
+        val root = activity.window.decorView
+        clickBottomTab(activity, "打印")
+
+        val otherTab = findText(root, "其它")
+        assertNotNull("「其它」二级 Tab 应存在", otherTab)
+        (otherTab!!.parent as LinearLayout).performClick()
+        idle()
+
+        val label = findText(root, "课程表")
+        assertNotNull("「其它」页应有「课程表」模板入口", label)
+        (label!!.parent as LinearLayout).performClick()   // 点击监听挂在宫格项容器上
+        idle()                                            // scope.launch(Dispatchers.Main) 的生成任务
+
+        assertNotNull("模板生成后应进入统一准备页", findText(root, "准备打印 · 课程表"))
+        assertNotNull("准备页应有「🖨 打印」按钮", findText(root, "🖨 打印"))
+        assertNull("模板不应再直弹确认对话框", org.robolectric.shadows.ShadowDialog.getLatestDialog())
     }
 
     /** DFS 找包含指定文本的 ScrollView（issue #5：确认对话框内容需可滚动） */

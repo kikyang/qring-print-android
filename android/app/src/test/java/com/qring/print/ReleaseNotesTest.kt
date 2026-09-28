@@ -24,7 +24,8 @@ class ReleaseNotesTest {
 
     @Test
     fun `说明收集 当前已最新返回 null`() {
-        assertNull("与日志最新版本相同应无说明", ReleaseNotes.notesSince("0.7.7"))
+        // 用日志首条而非字面量：发版新增条目时本用例不必手改，仍然检查"已最新 → 不弹说明"
+        assertNull("与日志最新版本相同应无说明", ReleaseNotes.notesSince(ReleaseNotes.latestVersion))
     }
 
     @Test
@@ -58,13 +59,32 @@ class ReleaseNotesTest {
     }
 
     @Test
+    fun `发版一致性 版本号三处必须一致`() {
+        // 守卫"发版漏同步"（2026-09-28 加）：build.gradle 的 versionName、ReleaseNotes 最新条目、
+        // 仓库根 version.json（OTA 读取的）三处必须同一个号——任一处漏改都会让用户看到错误版本/收不到更新。
+        // 路径 android/app → ../../version.json
+        val vj = java.io.File("../../version.json")
+        assertTrue("找不到仓库根 version.json（测试工作目录=${java.io.File(".").absolutePath}）", vj.exists())
+        val manifestVersion = Regex("\"version\"\\s*:\\s*\"([^\"]+)\"").find(vj.readText())?.groupValues?.get(1)
+        assertEquals("version.json 应与 ReleaseNotes 最新条目一致", ReleaseNotes.latestVersion, manifestVersion)
+
+        // App 运行时版本号取自 PackageManager（= build.gradle.kts 的 versionName，见 MainActivity 动态读版本），
+        // 工程未开 buildConfig，故这里直接读构建脚本文本作为第三处来源
+        val gradle = java.io.File("build.gradle.kts")
+        assertTrue("找不到 app/build.gradle.kts", gradle.exists())
+        val gradleVersion = Regex("versionName\\s*=\\s*\"([^\"]+)\"").find(gradle.readText())?.groupValues?.get(1)
+        assertEquals("build.gradle versionName 应与 version.json 一致", manifestVersion, gradleVersion)
+    }
+
+    @Test
     fun `说明收集 低于日志最低版本列出全部`() {
         val notes = ReleaseNotes.notesSince("0.5.4") ?: error("0.5.4 后有更新，不应为空")
         assertTrue("含最低 0.5.5", notes.contains("【0.5.5】"))
-        assertTrue("含最高 0.7.7", notes.contains("【0.7.7】"))
+        assertTrue("含最高 ${ReleaseNotes.latestVersion}", notes.contains("【${ReleaseNotes.latestVersion}】"))
         assertTrue("含 0.7.2", notes.contains("【0.7.2】"))
         assertTrue("含 0.7.1", notes.contains("【0.7.1】"))
         assertTrue("含 0.7.0", notes.contains("【0.7.0】"))
-        assertEquals("全部 13 条", 13, notes.split("【").size - 1)
+        // 断言"输出条目数 == 日志条目数"（而非写死的数字）：既是完整性检查，发版也不必手改
+        assertEquals("全部 ${ReleaseNotes.logSize} 条", ReleaseNotes.logSize, notes.split("【").size - 1)
     }
 }

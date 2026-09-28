@@ -2,7 +2,7 @@
 
 > 给人类看的架构文档：不解释每一行代码，而是讲清楚"这套系统是怎么拼起来的、每个部件为什么存在"。
 > 读完本文你应该能回答：一条错题从手机屏幕到热敏纸，中间经历了什么？
-> 最近同步：v0.7.7（2026-09-09）。
+> 最近同步：v0.7.8（2026-09-28）。
 
 ---
 
@@ -209,7 +209,7 @@ v0.7.6 起确认对话框把「预览图 + 确认条」放进 ScrollView，且�
 | 文档解析竞态防护 | 新任务取消旧协程（大文件晚完成会覆盖新结果），CancellationException 不吞 |
 | BLE 分包 + 节奏控制 | 96B/包 + 40ms 间隔，防丢包；SPP 1024B/块 + 1ms |
 | 三通道共享打印时序 | PrintJobRunner 统一编排，BLE/SPP/FakePrinter 三通道跑同一份代码——实物联调只剩 GATT 写 + 热敏头物理两个未知量 |
-| **自动化测试（210 例）** | `gradle runUnitTests`：协议（15）/算法（15）/模板·历史·设置（13）/Robolectric 界面（20）/虚拟打印机引擎（21）/端到端（15）/性能基准（3）；其余为 v0.7.x 分批补充——图片增强·变换·裁剪、Markdown、PPT/公式排版、批量打印（CSV/XLSX/模板）、函数图像、OTA 更新说明与**多源择优（UpdateManagerTest 9 例）**、条码 13 种与校验/清洗、**抖动蛇形扫描金标准 + 确认对话框可滚动（issue #5 防回归）**。注意：Gradle Test worker 在中文路径下 classpath 失效，用 JavaExec 任务绕开（见 README） |
+| **自动化测试（213 例）** | `gradle runUnitTests`：协议（15）/算法（15）/模板·历史·设置（13）/Robolectric 界面（24）/虚拟打印机引擎（21）/端到端（15）/性能基准（3）；其余为 v0.7.x 分批补充——图片增强·变换·裁剪、Markdown、PPT/公式排版、批量打印（CSV/XLSX/模板）、函数图像、OTA 更新说明与**多源择优（UpdateManagerTest 9 例）**、条码 13 种与校验/清洗、**抖动蛇形扫描金标准 + 确认对话框可滚动（issue #5 防回归）**、**统一准备打印页（3 例：准备页确认条可滚动 / 返回回到原工作区 / 模板生成后进准备页）**、**发版一致性守卫（v0.7.8，已回滚验证）**。注意：Gradle Test worker 在中文路径下 classpath 失效，用 JavaExec 任务绕开（见 README） |
 | **R8 瘦身** | release 开 minify（AGP 8.5.2），APK 6.4MB → 0.87MB（v0.7.2）→ ~1.0MB（v0.7.5，新增条码码制/批量/函数图后略增）；zxing 自带 consumer rules，mapping 验证功能类全保留 |
 
 ### 6.1 OTA 检查更新（v0.5.2 起）
@@ -288,7 +288,7 @@ test/ 目录（210 例，`gradle runUnitTests`）：
 ├── QringProtocolTest.kt      # 协议字节/状态位/指令构造（15 例）
 ├── DitherTest.kt / CannyTest.kt  # 抖动/边缘检测算法（15 例，含蛇形扫描金标准）
 ├── TemplateBuilderTest.kt / HistoryStoreTest.kt / SettingsTest.kt  # 模板/历史/设置（13 例）
-├── MainActivityUiTest.kt     # Robolectric 界面测试（20 例：启动/图标/预览/排版/模板/参数记忆/画布/宫格/分工/确认对话框可滚动）
+├── MainActivityUiTest.kt     # Robolectric 界面测试（24 例：启动/图标/预览/排版/模板/参数记忆/画布/宫格/分工/确认对话框可滚动/统一准备打印页）
 ├── FakePrinterTest.kt        # 虚拟打印机协议引擎（21 例）
 ├── FakePrinterE2ETest.kt     # 端到端链路（15 例）
 ├── ImagePipelineBenchTest.kt # 图像管线性能基准（3 例）
@@ -298,7 +298,7 @@ test/ 目录（210 例，`gradle runUnitTests`）：
 ├── CsvTableParserTest.kt / XlsxTableExtractorTest.kt / BatchTemplateTest.kt  # 批量打印（v0.7.4）
 ├── ExpressionEvaluatorTest.kt / FunctionGraphTest.kt  # 函数图像（v0.7.4）
 ├── ReleaseNotesTest.kt       # OTA 更新说明（v0.7.1）
-├── UpdateManagerTest.kt      # OTA 多源解析 + 取最高版本（9 例，v0.7.7）
+├── UpdateManagerTest.kt      # OTA 多源解析 + 取最高版本（9 例，v0.7.7）+ 发版一致性守卫（1 例，v0.7.8）
 └── BarcodeGeneratorTest.kt   # 条码 13 种 + 校验/清洗（v0.7.5）
 ```
 
