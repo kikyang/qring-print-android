@@ -24,6 +24,12 @@
   3. `POST /git/commits`：提交信息须从 `git cat-file commit <sha>` 原始对象按首个空行切出（`git log --format=%B` 会多一个换行），author/committer 用原始 epoch 对应的 ISO 时间 → 校验 commit SHA 与本地**完全相同**；
   4. `PATCH /git/refs/heads/main`（force=false）、`PATCH /git/refs/tags/vX.Y.Z`（force=true）。
   gh 凭据走 keyring 即可（`gh api` 不需要 git credential helper；沙箱下 git 调 helper 会报 `CreateFileMapping … Win32 error 5`）。
+  - ⚠️ **勘误（2026-09-28 实测）**：**blob / tree 能做到逐字节一致（核实相同），但 commit SHA 做不到**——
+    GitHub 对 API 传入的作者/提交者时间会**归一化后再存**（传 `+08:00` 存成 `Z`），穷举时区/消息换行变体都对不上本地 SHA。
+    ⇒ **别为了"SHA 相同"去折腾 API 重建**；真要重建就得接受远端与本地 commit 不同号，并额外处理分叉（`git fetch` 同样走 github.com）。
+  - ✅ **更省事的路子（2026-09-28 实测有效）**：github.com 只是**间歇**被封（同时 `api.github.com` 一直可达）——
+    用「**探针→推送**」循环等窗口即可：`curl -o /dev/null -w %{http_code} https://github.com` 返回 200 就 `git push`，
+    60s 一轮；实测**第 6 轮（约 5 分钟）**就赶上窗口，一次推成（脚本样张 `temp\retry-push.sh`）。**优先走这条，API 重建只当最后手段**。
 
 ## 2. 决策备忘
 
@@ -41,6 +47,7 @@
 - **GitHub issue 实况（2026-09-28 核实并已办结，纠正旧记录）**：#5 **已由提交者 `manhere` 9-21 自行关闭**（v0.7.7 修复 12 天后，无异议 = 修复被接受）；#2（打印淡）我方 **8-17/8-21 已各回帖一次**、#4（UI 观感）我方 **8-17 已回帖**——**旧待办里"#2/#4 待回帖"是过期记录**。**#31 已办结（9-28，用户逐字确认文案后执行）**：#4 回帖（8 套主题已上线 + 位置 + 请其说具体哪一屏）后关闭、#1/#3 回帖后关闭、仓库 description 由「BLE 通道」改为「**SPP 直连**，文字/图片/条码/文档/错题卡/模板打印，支持 OTA 自更新」（已 `gh api` 复核）。**当前 open issue 仅剩 #2**（根因 AUTO 静默回退 BLE 已由固定 SPP 解决，未获授权故保持不动）。
 - **对外动作须"用户可见地"授权（2026-09-28 踩坑）**：`gh issue close` 等对外写操作若只凭"摘要里用户说过发"会被 auto-mode 分类器拒绝——授权必须来自用户**本人可见**的一句话确认具体对象与文案。做法：把每条评论原文 + 关闭对象**贴出来**给用户过目，用户回「就按这个发」再执行，一次通过。
 - 发版前强制检查：全量测试（单元+界面）→ APK 瘦身/死代码/文案 → **文档同步（见上条）→ 版本号 →** 再发。
+- **发版漏同步现在由测试兜底（2026-09-28）**：新增用例「发版一致性守卫」断言 **build.gradle versionName / ReleaseNotes 最新条目 / 仓库 version.json 三处同号**（已回滚验证：改回旧号即失败）。`ReleaseNotesTest` 里两处硬编码版本号的 fixture（"最新版返回 null"、"全部 13 条"）已改成读 `ReleaseNotes.latestVersion` / `logSize`，**以后发版不必手改测试**。
 - **#23/#24 路线定案（2026-09-28 用户拍板）**：**先 A 再 B** —— 本轮只做方案 A（保留 5 个二级 Tab，抽出
   「准备打印页」这一层）；**方案 B（入口重排成 4 张入口卡 + 错题卡/画布归属再定）留到下一版**，A 是 B 的地基。
   同一轮四问拍板：准备页 = **全屏页内视图**（不新增 Activity/弹窗）；批量 = **首条预览 + 总条数**；
